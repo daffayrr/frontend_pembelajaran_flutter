@@ -8,6 +8,7 @@ import 'package:frontend_pembelajaran_flutter/screens/bookmark_screen.dart';
 import 'package:frontend_pembelajaran_flutter/screens/login_screen.dart';
 import 'package:frontend_pembelajaran_flutter/screens/main_screen.dart';
 import 'package:frontend_pembelajaran_flutter/screens/daftar_cerita_screen.dart';
+import 'package:frontend_pembelajaran_flutter/screens/notifikasi_screen.dart';
 import 'package:frontend_pembelajaran_flutter/constants/colors.dart';
 import 'package:frontend_pembelajaran_flutter/constants/api.dart';
 
@@ -116,213 +117,226 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  String _getGreeting() {
-    var hour = DateTime.now().hour;
-    if (hour < 12) return 'Selamat Pagi,';
-    if (hour < 15) return 'Selamat Siang,';
-    if (hour < 18) return 'Selamat Sore,';
-    return 'Selamat Malam,';
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        // Gradasi Glossy pada background layar secara keseluruhan
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              const Color(0xFFF8F9FA),
-              warnaTosca.withOpacity(0.04),
-              const Color(0xFFF8F9FA),
+      backgroundColor: const Color(0xFFF8F9FA),
+      body: RefreshIndicator(
+        onRefresh: _fetchMateriServer,
+        color: warnaTosca,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(bottom: 120),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildCurvedHeader(),
+              const SizedBox(height: 15),
+              _buildSectionTitle('Trends (Buku Digital)', 'View all', () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        const DaftarCeritaScreen(initialFilter: 'Ebook'),
+                  ),
+                );
+              }),
+              SizedBox(
+                height: 230,
+                child: isLoading
+                    ? _buildLoadingCard()
+                    : listBuku.isEmpty
+                    ? _buildEmptyState('Belum ada buku tersedia')
+                    : ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        itemCount: listBuku.length,
+                        itemBuilder: (context, index) =>
+                            _buildBukuCard(listBuku[index]),
+                      ),
+              ),
+              const SizedBox(height: 15),
+              _buildSectionTitle('Video Pembelajaran', 'View all', () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        const DaftarCeritaScreen(initialFilter: 'Video'),
+                  ),
+                );
+              }),
+              SizedBox(
+                height: 170,
+                child: isLoading
+                    ? _buildLoadingCard()
+                    : listVideo.isEmpty
+                    ? _buildEmptyState('Belum ada video tersedia')
+                    : ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        itemCount: listVideo.length,
+                        itemBuilder: (context, index) =>
+                            _buildVideoCard(listVideo[index]),
+                      ),
+              ),
+              const SizedBox(height: 15),
+              _buildSectionTitle('Cerita Komunitas', 'View all', () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const DaftarCeritaScreen(
+                      initialFilter: 'Cerita Pilihan',
+                    ),
+                  ),
+                );
+              }),
+              SizedBox(
+                height: 140,
+                child: isLoading
+                    ? _buildLoadingCard()
+                    : listCerita.isEmpty
+                    ? _buildEmptyState('Belum ada cerita')
+                    : ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        itemCount: listCerita.length,
+                        itemBuilder: (context, index) =>
+                            _buildCeritaCard(listCerita[index], index),
+                      ),
+              ),
             ],
-          ),
-        ),
-        child: RefreshIndicator(
-          onRefresh: _fetchMateriServer,
-          color: warnaTosca,
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.only(bottom: 120),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildPremiumHeader(),
-                const SizedBox(height: 10),
-                _buildSectionTitle(
-                  'Buku Dongeng Digital',
-                  'Lihat Semua',
-                  Icons.menu_book_rounded,
-                  () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            const DaftarCeritaScreen(initialFilter: 'Ebook'),
-                      ),
-                    );
-                  },
-                ),
-                SizedBox(
-                  height: 230,
-                  child: isLoading
-                      ? _buildLoadingCard()
-                      : listBuku.isEmpty
-                      ? _buildEmptyState('Belum ada buku tersedia')
-                      : ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          physics: const BouncingScrollPhysics(),
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          itemCount: listBuku.length,
-                          itemBuilder: (context, index) =>
-                              _buildBukuCard(listBuku[index]),
-                        ),
-                ),
-                const SizedBox(height: 15),
-                _buildSectionTitle(
-                  'Video Dongeng',
-                  'Lihat Semua',
-                  Icons.play_circle_fill_rounded,
-                  () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            const DaftarCeritaScreen(initialFilter: 'Video'),
-                      ),
-                    );
-                  },
-                ),
-                SizedBox(
-                  height: 170,
-                  child: isLoading
-                      ? _buildLoadingCard()
-                      : listVideo.isEmpty
-                      ? _buildEmptyState('Belum ada video tersedia')
-                      : ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          physics: const BouncingScrollPhysics(),
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          itemCount: listVideo.length,
-                          itemBuilder: (context, index) =>
-                              _buildVideoCard(listVideo[index]),
-                        ),
-                ),
-                const SizedBox(height: 15),
-                _buildSectionTitle(
-                  'Cerita Pilihan',
-                  'Jelajahi',
-                  Icons.auto_awesome_rounded,
-                  () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const DaftarCeritaScreen(
-                          initialFilter: 'Cerita Pilihan',
-                        ),
-                      ),
-                    );
-                  },
-                ),
-                SizedBox(
-                  height: 140,
-                  child: isLoading
-                      ? _buildLoadingCard()
-                      : listCerita.isEmpty
-                      ? _buildEmptyState('Belum ada cerita')
-                      : ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          physics: const BouncingScrollPhysics(),
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          itemCount: listCerita.length,
-                          itemBuilder: (context, index) =>
-                              _buildCeritaCard(listCerita[index], index),
-                        ),
-                ),
-              ],
-            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildPremiumHeader() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(25, 60, 25, 35),
-      decoration: BoxDecoration(
-        // Menambahkan Efek Gradasi Glossy pada Header Premium
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            warnaTosca,
-            const Color(
-              0xFF00B4C0,
-            ), // Warna variasi tosca agar lebih terang (glossy)
-            warnaTosca,
-          ],
-          stops: const [0.0, 0.5, 1.0],
-        ),
-        borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(35),
-          bottomRight: Radius.circular(35),
-        ),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x400CE2CD),
-            blurRadius: 20,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(3),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white.withOpacity(0.3),
-            ),
-            child: const CircleAvatar(
-              radius: 28,
-              backgroundColor: Colors.white,
-              child: Icon(Icons.person, color: warnaTosca, size: 35),
+  Widget _buildCurvedHeader() {
+    return Stack(
+      alignment: Alignment.bottomCenter,
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(25, 60, 25, 80),
+          decoration: const BoxDecoration(
+            color: warnaTosca,
+            borderRadius: BorderRadius.only(
+              bottomLeft: Radius.elliptical(200, 40),
+              bottomRight: Radius.elliptical(200, 40),
             ),
           ),
-          const SizedBox(width: 18),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _getGreeting(),
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white.withOpacity(0.9),
-                  ),
-                ),
-                Text(
-                  namaUser,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    letterSpacing: 0.5,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildHeaderButton(
-                icon: Icons.bookmarks_rounded,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      const CircleAvatar(
+                        radius: 22,
+                        backgroundColor: Colors.white24,
+                        child: Icon(
+                          Icons.person,
+                          color: Colors.white,
+                          size: 30,
+                        ),
+                      ),
+                      const SizedBox(width: 15),
+                      Text(
+                        'Hi, $namaUser',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                  GestureDetector(
+                    onTap: () {
+                      if (isLoggedIn) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const NotifikasiScreen(),
+                          ),
+                        );
+                      } else {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const LoginScreen(),
+                          ),
+                        );
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white30, width: 1.5),
+                      ),
+                      child: const Icon(
+                        Icons.notifications_none_rounded,
+                        color: Colors.white,
+                        size: 22,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 35),
+              const Text(
+                'Temukan Materi\nFavoritmu Di Sini!',
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  height: 1.3,
+                ),
+              ),
+              const SizedBox(height: 25),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 15,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(30),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.search, color: Colors.grey),
+                    SizedBox(width: 15),
+                    Expanded(
+                      child: Text(
+                        'Cari judul atau topik...',
+                        style: TextStyle(color: Colors.grey, fontSize: 14),
+                      ),
+                    ),
+                    Icon(Icons.mic_none_rounded, color: warnaTosca),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        // 3 Tombol Pintasan Overlap
+        Positioned(
+          bottom: -40,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildShortcutButton(
+                icon: Icons.favorite_border_rounded,
+                label: 'Favorit',
+                color: Colors.orange,
                 onTap: () {
                   if (isLoggedIn) {
                     Navigator.push(
@@ -330,11 +344,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       MaterialPageRoute(builder: (_) => const BookmarkScreen()),
                     );
                   } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Silakan login untuk melihat favorit.'),
-                      ),
-                    );
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -342,10 +351,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   }
                 },
               ),
-              const SizedBox(width: 12),
-              _buildHeaderButton(
+              const SizedBox(width: 15),
+              _buildShortcutButton(
+                icon: Icons.menu_book_rounded,
+                label: 'Daftar',
+                color: Colors.orange,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const DaftarCeritaScreen(),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(width: 15),
+              _buildShortcutButton(
                 icon: isLoggedIn ? Icons.logout_rounded : Icons.login_rounded,
-                isRed: isLoggedIn,
+                label: isLoggedIn ? 'Keluar' : 'Masuk',
+                color: Colors.orange,
                 onTap: () {
                   if (isLoggedIn) {
                     _logout(context);
@@ -359,57 +383,68 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  Widget _buildHeaderButton({
+  Widget _buildShortcutButton({
     required IconData icon,
+    required String label,
+    required Color color,
     required VoidCallback onTap,
-    bool isRed = false,
   }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(10),
+        width: 100,
+        padding: const EdgeInsets.symmetric(vertical: 20),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.2),
-          shape: BoxShape.circle,
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 15,
+              offset: const Offset(0, 10),
+            ),
+          ],
         ),
-        child: Icon(
-          icon,
-          color: isRed ? Colors.redAccent[100] : Colors.white,
-          size: 22,
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              child: Icon(icon, color: Colors.white, size: 28),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              label,
+              style: TextStyle(
+                color: Colors.grey[800],
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildSectionTitle(
-    String title,
-    String action,
-    IconData icon,
-    VoidCallback onTap,
-  ) {
+  Widget _buildSectionTitle(String title, String action, VoidCallback onTap) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(25, 10, 25, 15),
+      padding: const EdgeInsets.fromLTRB(25, 60, 25, 15),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              Icon(icon, color: warnaTosca, size: 22),
-              const SizedBox(width: 8),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
-            ],
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF2C3E50),
+            ),
           ),
           GestureDetector(
             onTap: onTap,
@@ -418,7 +453,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
-                color: warnaTosca,
+                color: Colors.grey,
               ),
             ),
           ),
@@ -436,11 +471,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       ),
       child: Container(
-        width: 135,
+        width: 150,
         margin: const EdgeInsets.only(right: 18, bottom: 15),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(15),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.04),
@@ -455,7 +490,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Expanded(
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(20),
+                  top: Radius.circular(15),
                 ),
                 child: materi['url_sampul'] != null
                     ? CachedNetworkImage(
@@ -463,15 +498,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         cacheKey: materi['id'].toString() + '_sampul',
                         width: double.infinity,
                         fit: BoxFit.cover,
-                        placeholder: (context, url) => Container(
-                          color: Colors.grey[100],
-                          child: const Center(
-                            child: CircularProgressIndicator(
-                              color: warnaTosca,
-                              strokeWidth: 2,
-                            ),
-                          ),
-                        ),
+                        placeholder: (context, url) =>
+                            Container(color: Colors.grey[100]),
                         errorWidget: (context, url, error) => Container(
                           color: Colors.grey[100],
                           child: const Icon(
@@ -510,7 +538,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   Text(
                     'E-Book PDF',
                     style: TextStyle(
-                      fontSize: 11,
+                      fontSize: 10,
                       color: Colors.grey[500],
                       fontWeight: FontWeight.w600,
                     ),
@@ -537,7 +565,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         margin: const EdgeInsets.only(right: 18, bottom: 15),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(15),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.04),
@@ -555,7 +583,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 children: [
                   ClipRRect(
                     borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(20),
+                      top: Radius.circular(15),
                     ),
                     child: materi['url_sampul'] != null
                         ? CachedNetworkImage(
@@ -564,13 +592,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             fit: BoxFit.cover,
                             placeholder: (context, url) =>
                                 Container(color: Colors.grey[100]),
-                            errorWidget: (context, url, error) => Container(
-                              color: Colors.grey[100],
-                              child: const Icon(
-                                Icons.broken_image_rounded,
-                                color: Colors.grey,
-                              ),
-                            ),
                           )
                         : Container(
                             color: Colors.purple[50],
@@ -584,7 +605,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   Container(
                     decoration: BoxDecoration(
                       borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(20),
+                        top: Radius.circular(15),
                       ),
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
@@ -653,7 +674,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         padding: const EdgeInsets.all(15),
         decoration: BoxDecoration(
           color: color,
-          borderRadius: BorderRadius.circular(25),
+          borderRadius: BorderRadius.circular(15),
           boxShadow: [
             BoxShadow(
               color: color.withOpacity(0.4),
@@ -667,11 +688,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const CircleAvatar(
-              radius: 20,
+              radius: 18,
               backgroundColor: Colors.white,
               child: Icon(
                 Icons.article_rounded,
-                size: 22,
+                size: 20,
                 color: Colors.black54,
               ),
             ),

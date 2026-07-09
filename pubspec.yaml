@@ -105,7 +105,9 @@ flutter:
   # see https://flutter.dev/to/font-from-package
 
 flutter_launcher_icons:
-     android: true
-     ios: true
-     image_path: "assets/icon/app_icon.png"
-     min_sdk_android: 21 # Mengikuti minSdk proyekmu
+      android: true
+      ios: true
+      image_path: "assets/icon/app_icon.png"
+      adaptive_icon_background: "#FFFFFF"
+      adaptive_icon_foreground: "assets/icon/app_icon.png"
+      min_sdk_android: 21 # Mengikuti minSdk proyekmu
