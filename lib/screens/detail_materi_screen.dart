@@ -31,11 +31,18 @@ class _DetailMateriScreenState extends State<DetailMateriScreen> {
   String filePath = '';
   ValueNotifier<double>? downloadNotifier;
 
+  // --- TAMBAHAN STATE KOMENTAR ---
+  List listKomentar = [];
+  bool isLoadingKomentar = true;
+  bool isKirimKomentar = false;
+  final TextEditingController _komentarController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
     _checkFileExists();
     _checkBookmarkStatusAPI();
+    _fetchKomentar(); // Memicu pemuatan komentar
 
     int materiId = int.parse(widget.materi['id'].toString());
     if (DownloadTracker.activeDownloads.containsKey(materiId)) {
@@ -43,6 +50,94 @@ class _DetailMateriScreenState extends State<DetailMateriScreen> {
       downloadNotifier = DownloadTracker.activeDownloads[materiId];
     }
   }
+
+  // ==========================================
+  // TAMBAHAN METHOD KOMENTAR
+  // ==========================================
+  Future<void> _fetchKomentar() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$endpointKomentar/${widget.materi['id']}'),
+      );
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (mounted) {
+          setState(() {
+            listKomentar = data['data'] ?? [];
+            isLoadingKomentar = false;
+          });
+        }
+      } else {
+        if (mounted) setState(() => isLoadingKomentar = false);
+      }
+    } catch (e) {
+      if (mounted) setState(() => isLoadingKomentar = false);
+    }
+  }
+
+  Future<void> _kirimKomentar() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getString('user_id');
+
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Silakan login untuk berkomentar.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+      );
+      return;
+    }
+
+    if (_komentarController.text.trim().isEmpty) return;
+
+    setState(() => isKirimKomentar = true);
+    FocusScope.of(context).unfocus(); // Menutup keyboard
+
+    try {
+      final response = await http.post(
+        Uri.parse(endpointKomentar),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'materi_id': widget.materi['id'],
+          'user_id': userId,
+          'isi_komentar': _komentarController.text.trim(),
+        }),
+      );
+
+      if (response.statusCode == 201) {
+        _komentarController.clear();
+        await _fetchKomentar(); // Muat ulang daftar komentar
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Gagal mengirim komentar.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Terjadi kesalahan jaringan.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => isKirimKomentar = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _komentarController.dispose();
+    super.dispose();
+  }
+  // ==========================================
 
   Future<void> _checkBookmarkStatusAPI() async {
     final prefs = await SharedPreferences.getInstance();
@@ -337,9 +432,7 @@ class _DetailMateriScreenState extends State<DetailMateriScreen> {
                   child: widget.materi['url_sampul'] != null
                       ? CachedNetworkImage(
                           imageUrl: widget.materi['url_sampul'],
-                          cacheKey:
-                              widget.materi['id'].toString() +
-                              '_sampul', // 🚀 FIX: Mengunci Cache secara permanen
+                          cacheKey: widget.materi['id'].toString() + '_sampul',
                           fit: BoxFit.cover,
                           placeholder: (context, url) => const Center(
                             child: CircularProgressIndicator(color: warnaTosca),
@@ -416,6 +509,149 @@ class _DetailMateriScreenState extends State<DetailMateriScreen> {
               textAlign: TextAlign.justify,
             ),
             const SizedBox(height: 40),
+
+            // ==========================================
+            // TAMBAHAN UI KOMENTAR DI SINI
+            // ==========================================
+            const Divider(color: Colors.black12, thickness: 1),
+            const SizedBox(height: 20),
+
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Komentar (${listKomentar.length})',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // 1. List Komentar
+            isLoadingKomentar
+                ? const Center(
+                    child: CircularProgressIndicator(color: warnaTosca),
+                  )
+                : listKomentar.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      child: Text(
+                        'Belum ada komentar. Jadilah yang pertama!',
+                        style: TextStyle(color: Colors.grey[500]),
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: listKomentar.length,
+                    itemBuilder: (context, index) {
+                      final item = listKomentar[index];
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 15),
+                        padding: const EdgeInsets.all(15),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(15),
+                          border: Border.all(color: Colors.grey.shade200),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CircleAvatar(
+                              radius: 18,
+                              backgroundColor: warnaTosca.withOpacity(0.2),
+                              child: Text(
+                                item['nama_user']
+                                        ?.substring(0, 1)
+                                        .toUpperCase() ??
+                                    'U',
+                                style: const TextStyle(
+                                  color: warnaTosca,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    item['nama_user'] ?? 'Pengguna',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    item['isi_komentar'] ?? '',
+                                    style: TextStyle(
+                                      color: Colors.grey[800],
+                                      fontSize: 13,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+
+            const SizedBox(height: 15),
+
+            // 2. Input Komentar
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _komentarController,
+                      decoration: const InputDecoration(
+                        hintText: 'Tulis komentar Anda...',
+                        border: InputBorder.none,
+                        hintStyle: TextStyle(fontSize: 14),
+                      ),
+                      minLines: 1,
+                      maxLines: 3,
+                    ),
+                  ),
+                  isKirimKomentar
+                      ? const Padding(
+                          padding: EdgeInsets.all(10),
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: warnaTosca,
+                            ),
+                          ),
+                        )
+                      : IconButton(
+                          icon: const Icon(
+                            Icons.send_rounded,
+                            color: warnaTosca,
+                          ),
+                          onPressed: _kirimKomentar,
+                        ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 40),
+            // ==========================================
           ],
         ),
       ),

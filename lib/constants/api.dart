@@ -15,6 +15,9 @@ const String endpointMateri = 'https://$ipServer/api/materi';
 // Endpoint Favorit / Bookmark
 const String endpointFavorit = 'https://$ipServer/api/favorit';
 
+//Endpoint Komentar
+const String endpointKomentar = 'https://$ipServer/api/komentar';
+
 // Endpoint User (Profil & Keamanan)
 const String endpointUserProfil = 'https://$ipServer/api/user/profil';
 const String endpointUserPassword = 'https://$ipServer/api/user/password';
