@@ -127,109 +127,122 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
-      body: RefreshIndicator(
-        onRefresh: _fetchMateriServer,
-        color: warnaTosca,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.only(bottom: 120),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildPremiumHeader(),
-              const SizedBox(height: 10),
-              _buildSectionTitle(
-                'Buku Dongeng DIgital',
-                'Lihat Semua',
-                Icons.menu_book_rounded,
-                () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          const DaftarCeritaScreen(initialFilter: 'Ebook'),
-                    ),
-                  );
-                },
-              ),
-              SizedBox(
-                height: 230,
-                child: isLoading
-                    ? _buildLoadingCard()
-                    : listBuku.isEmpty
-                    ? _buildEmptyState('Belum ada buku tersedia')
-                    : ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        physics: const BouncingScrollPhysics(),
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        itemCount: listBuku.length,
-                        itemBuilder: (context, index) =>
-                            _buildBukuCard(listBuku[index]),
-                      ),
-              ),
-              const SizedBox(height: 15),
-              _buildSectionTitle(
-                'Video Dongeng',
-                'Lihat Semua',
-                Icons.play_circle_fill_rounded,
-                () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          const DaftarCeritaScreen(initialFilter: 'Video'),
-                    ),
-                  );
-                },
-              ),
-              SizedBox(
-                height: 170,
-                child: isLoading
-                    ? _buildLoadingCard()
-                    : listVideo.isEmpty
-                    ? _buildEmptyState('Belum ada video tersedia')
-                    : ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        physics: const BouncingScrollPhysics(),
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        itemCount: listVideo.length,
-                        itemBuilder: (context, index) =>
-                            _buildVideoCard(listVideo[index]),
-                      ),
-              ),
-              const SizedBox(height: 15),
-              _buildSectionTitle(
-                'Cerita Pilihan',
-                'Jelajahi',
-                Icons.auto_awesome_rounded,
-                () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const DaftarCeritaScreen(
-                        initialFilter: 'Cerita Pilihan',
-                      ),
-                    ),
-                  );
-                },
-              ),
-              SizedBox(
-                height: 140,
-                child: isLoading
-                    ? _buildLoadingCard()
-                    : listCerita.isEmpty
-                    ? _buildEmptyState('Belum ada cerita')
-                    : ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        physics: const BouncingScrollPhysics(),
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        itemCount: listCerita.length,
-                        itemBuilder: (context, index) =>
-                            _buildCeritaCard(listCerita[index], index),
-                      ),
-              ),
+      body: Container(
+        // Gradasi Glossy pada background layar secara keseluruhan
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              const Color(0xFFF8F9FA),
+              warnaTosca.withOpacity(0.04),
+              const Color(0xFFF8F9FA),
             ],
+          ),
+        ),
+        child: RefreshIndicator(
+          onRefresh: _fetchMateriServer,
+          color: warnaTosca,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.only(bottom: 120),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildPremiumHeader(),
+                const SizedBox(height: 10),
+                _buildSectionTitle(
+                  'Buku Dongeng Digital',
+                  'Lihat Semua',
+                  Icons.menu_book_rounded,
+                  () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            const DaftarCeritaScreen(initialFilter: 'Ebook'),
+                      ),
+                    );
+                  },
+                ),
+                SizedBox(
+                  height: 230,
+                  child: isLoading
+                      ? _buildLoadingCard()
+                      : listBuku.isEmpty
+                      ? _buildEmptyState('Belum ada buku tersedia')
+                      : ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          physics: const BouncingScrollPhysics(),
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          itemCount: listBuku.length,
+                          itemBuilder: (context, index) =>
+                              _buildBukuCard(listBuku[index]),
+                        ),
+                ),
+                const SizedBox(height: 15),
+                _buildSectionTitle(
+                  'Video Dongeng',
+                  'Lihat Semua',
+                  Icons.play_circle_fill_rounded,
+                  () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            const DaftarCeritaScreen(initialFilter: 'Video'),
+                      ),
+                    );
+                  },
+                ),
+                SizedBox(
+                  height: 170,
+                  child: isLoading
+                      ? _buildLoadingCard()
+                      : listVideo.isEmpty
+                      ? _buildEmptyState('Belum ada video tersedia')
+                      : ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          physics: const BouncingScrollPhysics(),
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          itemCount: listVideo.length,
+                          itemBuilder: (context, index) =>
+                              _buildVideoCard(listVideo[index]),
+                        ),
+                ),
+                const SizedBox(height: 15),
+                _buildSectionTitle(
+                  'Cerita Pilihan',
+                  'Jelajahi',
+                  Icons.auto_awesome_rounded,
+                  () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const DaftarCeritaScreen(
+                          initialFilter: 'Cerita Pilihan',
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                SizedBox(
+                  height: 140,
+                  child: isLoading
+                      ? _buildLoadingCard()
+                      : listCerita.isEmpty
+                      ? _buildEmptyState('Belum ada cerita')
+                      : ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          physics: const BouncingScrollPhysics(),
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          itemCount: listCerita.length,
+                          itemBuilder: (context, index) =>
+                              _buildCeritaCard(listCerita[index], index),
+                        ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -239,13 +252,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildPremiumHeader() {
     return Container(
       padding: const EdgeInsets.fromLTRB(25, 60, 25, 35),
-      decoration: const BoxDecoration(
-        color: warnaTosca,
-        borderRadius: BorderRadius.only(
+      decoration: BoxDecoration(
+        // Menambahkan Efek Gradasi Glossy pada Header Premium
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            warnaTosca,
+            const Color(
+              0xFF00B4C0,
+            ), // Warna variasi tosca agar lebih terang (glossy)
+            warnaTosca,
+          ],
+          stops: const [0.0, 0.5, 1.0],
+        ),
+        borderRadius: const BorderRadius.only(
           bottomLeft: Radius.circular(35),
           bottomRight: Radius.circular(35),
         ),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
             color: Color(0x400CE2CD),
             blurRadius: 20,
@@ -435,9 +460,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: materi['url_sampul'] != null
                     ? CachedNetworkImage(
                         imageUrl: materi['url_sampul'],
-                        cacheKey:
-                            materi['id'].toString() +
-                            '_sampul', // 🚀 FIX: Mengunci Cache
+                        cacheKey: materi['id'].toString() + '_sampul',
                         width: double.infinity,
                         fit: BoxFit.cover,
                         placeholder: (context, url) => Container(
@@ -537,9 +560,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: materi['url_sampul'] != null
                         ? CachedNetworkImage(
                             imageUrl: materi['url_sampul'],
-                            cacheKey:
-                                materi['id'].toString() +
-                                '_sampul', // 🚀 FIX: Mengunci Cache
+                            cacheKey: materi['id'].toString() + '_sampul',
                             fit: BoxFit.cover,
                             placeholder: (context, url) =>
                                 Container(color: Colors.grey[100]),
