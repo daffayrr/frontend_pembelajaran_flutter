@@ -35,6 +35,33 @@ class _EditProfilScreenState extends State<EditProfilScreen> {
       _emailController.text = prefs.getString('user_email') ?? '';
       _currentProfileUrl = prefs.getString('user_foto');
     });
+
+    final userId = prefs.getString('user_id');
+    if (userId != null) {
+      try {
+        final response = await http.get(
+          Uri.parse('/'),
+          headers: {'Authorization': staticAuthToken},
+        );
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          if (data['data'] != null) {
+            setState(() {
+              _namaController.text = data['data']['nama'] ?? _namaController.text;
+              _emailController.text = data['data']['email'] ?? _emailController.text;
+              if (data['data']['foto_profil'] != null) {
+                _currentProfileUrl = data['data']['foto_profil'];
+                prefs.setString('user_foto', data['data']['foto_profil']);
+              }
+              prefs.setString('user_email', _emailController.text);
+              prefs.setString('user_name', _namaController.text);
+            });
+          }
+        }
+      } catch (e) {
+        debugPrint('Error fetch profile: ');
+      }
+    }
   }
 
   Future<void> _pickImage() async {
@@ -109,7 +136,13 @@ class _EditProfilScreenState extends State<EditProfilScreen> {
 
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
-      final data = json.decode(response.body);
+      
+      dynamic data;
+      try {
+        data = json.decode(response.body);
+      } catch (e) {
+        throw Exception('Gagal membaca balasan server. Status: ');
+      }
 
       if (response.statusCode == 200) {
         await prefs.setString('user_name', _namaController.text);
