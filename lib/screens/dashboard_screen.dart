@@ -6,11 +6,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:frontend_pembelajaran_flutter/screens/detail_materi_screen.dart';
 import 'package:frontend_pembelajaran_flutter/screens/bookmark_screen.dart';
 import 'package:frontend_pembelajaran_flutter/screens/login_screen.dart';
-import 'package:frontend_pembelajaran_flutter/screens/main_screen.dart';
 import 'package:frontend_pembelajaran_flutter/screens/daftar_cerita_screen.dart';
-import 'package:frontend_pembelajaran_flutter/screens/notifikasi_screen.dart';
 import 'package:frontend_pembelajaran_flutter/constants/colors.dart';
 import 'package:frontend_pembelajaran_flutter/constants/api.dart';
+import 'package:frontend_pembelajaran_flutter/screens/akun_screen.dart';
+import 'package:frontend_pembelajaran_flutter/screens/quiz_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -20,12 +20,13 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  List listBuku = [];
-  List listVideo = [];
-  List listCerita = [];
+  List semuaMateri = [];
   bool isLoading = true;
   bool isLoggedIn = false;
   String namaUser = 'Tamu';
+  int totalPoin = 0; // State untuk skor
+  String filterAktif = 'Semua';
+  final List<String> listFilter = ['Semua', 'E-Book', 'Video', 'Fabel'];
 
   @override
   void initState() {
@@ -39,10 +40,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
     final nama = prefs.getString('user_name');
+    final String? userIdStr = prefs.getString('user_id');
+
     setState(() {
       if (token != null) {
         isLoggedIn = true;
         namaUser = nama ?? 'Pengguna';
+        // if user logged in, fetch score
+        if (userIdStr != null && userIdStr.isNotEmpty) {
+          _fetchUserScore(userIdStr);
+        }
       } else {
         isLoggedIn = false;
         namaUser = 'Tamu';
@@ -50,17 +57,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  Future<void> _logout(BuildContext context) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('token');
-    await prefs.remove('user_name');
-    await prefs.remove('user_role');
-    if (context.mounted) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => const MainScreen()),
-        (route) => false,
+  Future<void> _fetchUserScore(String userIdStr) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$endpointQuizScore/$userIdStr'),
+        headers: {
+          'Authorization': staticAuthToken,
+          'Content-Type': 'application/json',
+        },
       );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final double parsedScore =
+            double.tryParse(data['total_skor']?.toString() ?? '0') ?? 0.0;
+        if (mounted) {
+          setState(() {
+            totalPoin = parsedScore.round();
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetch skor dashboard: $e');
     }
   }
 
@@ -70,14 +88,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     if (cacheData != null) {
       final Map<String, dynamic> responseData = json.decode(cacheData);
-      final List semuaMateri = responseData['data'] ?? [];
       if (mounted) {
         setState(() {
-          listBuku = semuaMateri.where((m) => m['tipe'] == 'pdf').toList();
-          listVideo = semuaMateri
-              .where((m) => m['tipe'] == 'video' || m['tipe'] == 'mp4')
-              .toList();
-          listCerita = semuaMateri.where((m) => m['tipe'] == 'cerita').toList();
+          semuaMateri = responseData['data'] ?? [];
           isLoading = false;
         });
       }
@@ -85,376 +98,257 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _fetchMateriServer() async {
-    if (listBuku.isEmpty && listVideo.isEmpty && listCerita.isEmpty) {
+    if (semuaMateri.isEmpty) {
       if (mounted) setState(() => isLoading = true);
     }
-
     try {
       final response = await http.get(Uri.parse(endpointMateri));
       if (response.statusCode == 200) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('cache_materi_dashboard', response.body);
-
         final Map<String, dynamic> responseData = json.decode(response.body);
-        final List semuaMateri = responseData['data'] ?? [];
         if (mounted) {
           setState(() {
-            listBuku = semuaMateri.where((m) => m['tipe'] == 'pdf').toList();
-            listVideo = semuaMateri
-                .where((m) => m['tipe'] == 'video' || m['tipe'] == 'mp4')
-                .toList();
-            listCerita = semuaMateri
-                .where((m) => m['tipe'] == 'cerita')
-                .toList();
+            semuaMateri = responseData['data'] ?? [];
             isLoading = false;
           });
         }
       } else {
-        if (mounted && listBuku.isEmpty) setState(() => isLoading = false);
+        if (mounted && semuaMateri.isEmpty) setState(() => isLoading = false);
       }
     } catch (e) {
-      if (mounted && listBuku.isEmpty) setState(() => isLoading = false);
+      if (mounted && semuaMateri.isEmpty) setState(() => isLoading = false);
     }
+  }
+
+  List get materiTampil {
+    if (filterAktif == 'Semua') return semuaMateri;
+    if (filterAktif == 'E-Book')
+      return semuaMateri.where((m) => m['tipe'] == 'pdf').toList();
+    if (filterAktif == 'Video')
+      return semuaMateri
+          .where((m) => m['tipe'] == 'video' || m['tipe'] == 'mp4')
+          .toList();
+    if (filterAktif == 'Fabel')
+      return semuaMateri.where((m) => m['tipe'] == 'cerita').toList();
+    return semuaMateri;
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
-      body: RefreshIndicator(
-        onRefresh: _fetchMateriServer,
-        color: warnaTosca,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.only(bottom: 120),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildCurvedHeader(),
-              const SizedBox(height: 15),
-              _buildSectionTitle('Trends (Buku Digital)', 'View all', () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        const DaftarCeritaScreen(initialFilter: 'Ebook'),
-                  ),
-                );
-              }),
-              SizedBox(
-                height: 230,
-                child: isLoading
-                    ? _buildLoadingCard()
-                    : listBuku.isEmpty
-                    ? _buildEmptyState('Belum ada buku tersedia')
-                    : ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        physics: const BouncingScrollPhysics(),
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        itemCount: listBuku.length,
-                        itemBuilder: (context, index) =>
-                            _buildBukuCard(listBuku[index]),
-                      ),
-              ),
-              const SizedBox(height: 15),
-              _buildSectionTitle('Video Pembelajaran', 'View all', () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        const DaftarCeritaScreen(initialFilter: 'Video'),
-                  ),
-                );
-              }),
-              SizedBox(
-                height: 170,
-                child: isLoading
-                    ? _buildLoadingCard()
-                    : listVideo.isEmpty
-                    ? _buildEmptyState('Belum ada video tersedia')
-                    : ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        physics: const BouncingScrollPhysics(),
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        itemCount: listVideo.length,
-                        itemBuilder: (context, index) =>
-                            _buildVideoCard(listVideo[index]),
-                      ),
-              ),
-              const SizedBox(height: 15),
-              _buildSectionTitle('Cerita Komunitas', 'View all', () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const DaftarCeritaScreen(
-                      initialFilter: 'Cerita Pilihan',
-                    ),
-                  ),
-                );
-              }),
-              SizedBox(
-                height: 140,
-                child: isLoading
-                    ? _buildLoadingCard()
-                    : listCerita.isEmpty
-                    ? _buildEmptyState('Belum ada cerita')
-                    : ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        physics: const BouncingScrollPhysics(),
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        itemCount: listCerita.length,
-                        itemBuilder: (context, index) =>
-                            _buildCeritaCard(listCerita[index], index),
-                      ),
-              ),
-            ],
+      backgroundColor: const Color(0xFFFAFAFA),
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: () async {
+            _checkLoginStatus();
+            await _fetchMateriServer();
+          },
+          color: warnaTosca,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 15),
+                _buildHeader(),
+                const SizedBox(height: 25),
+                _buildHeroBanner(),
+                const SizedBox(height: 25),
+                _buildStatsCards(),
+                const SizedBox(height: 30),
+                _buildExploreSection(),
+                const SizedBox(height: 100),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildCurvedHeader() {
-    return Stack(
-      alignment: Alignment.bottomCenter,
-      clipBehavior: Clip.none,
-      children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(25, 60, 25, 80),
-          decoration: const BoxDecoration(
-            color: warnaTosca,
-            borderRadius: BorderRadius.only(
-              bottomLeft: Radius.elliptical(200, 40),
-              bottomRight: Radius.elliptical(200, 40),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+  // Header
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              GestureDetector(
+                onTap: () {
+                  if (isLoggedIn) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AkunScreen()),
+                    );
+                  } else {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const LoginScreen()),
+                    );
+                  }
+                },
+                child: const CircleAvatar(
+                  radius: 24,
+                  backgroundColor: warnaTosca,
+                  child: Icon(Icons.person, color: Colors.white, size: 28),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      const CircleAvatar(
-                        radius: 22,
-                        backgroundColor: Colors.white24,
-                        child: Icon(
-                          Icons.person,
-                          color: Colors.white,
-                          size: 30,
-                        ),
-                      ),
-                      const SizedBox(width: 15),
-                      Text(
-                        'Hi, $namaUser',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
+                  Text(
+                    'Selamat datang,',
+                    style: TextStyle(
+                      color: Colors.grey[500],
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
-                  GestureDetector(
-                    onTap: () {
-                      if (isLoggedIn) {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const NotifikasiScreen(),
-                          ),
-                        );
-                      } else {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const LoginScreen(),
-                          ),
-                        );
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white30, width: 1.5),
-                      ),
-                      child: const Icon(
-                        Icons.notifications_none_rounded,
-                        color: Colors.white,
-                        size: 22,
-                      ),
+                  Text(
+                    namaUser,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                      color: Colors.black87,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 35),
-              const Text(
-                'Temukan Materi\nFavoritmu Di Sini!',
-                style: TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  height: 1.3,
-                ),
-              ),
-              const SizedBox(height: 25),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 15,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(30),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.search, color: Colors.grey),
-                    SizedBox(width: 15),
-                    Expanded(
-                      child: Text(
-                        'Cari judul atau topik...',
-                        style: TextStyle(color: Colors.grey, fontSize: 14),
-                      ),
-                    ),
-                    Icon(Icons.mic_none_rounded, color: warnaTosca),
-                  ],
-                ),
-              ),
             ],
           ),
-        ),
-        // 3 Tombol Pintasan Overlap
-        Positioned(
-          bottom: -40,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          Row(
             children: [
-              _buildShortcutButton(
-                icon: Icons.favorite_border_rounded,
-                label: 'Favorit',
-                color: Colors.orange,
+              _buildHeaderIconButton(
+                icon: Icons.search_rounded,
                 onTap: () {
-                  if (isLoggedIn) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const BookmarkScreen()),
-                    );
-                  } else {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const LoginScreen()),
-                    );
-                  }
-                },
-              ),
-              const SizedBox(width: 15),
-              _buildShortcutButton(
-                icon: Icons.menu_book_rounded,
-                label: 'Daftar',
-                color: Colors.orange,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const DaftarCeritaScreen(),
-                    ),
+                  showSearch(
+                    context: context,
+                    delegate: MateriSearchDelegate(semuaMateri: semuaMateri),
                   );
                 },
               ),
-              const SizedBox(width: 15),
-              _buildShortcutButton(
-                icon: isLoggedIn ? Icons.logout_rounded : Icons.login_rounded,
-                label: isLoggedIn ? 'Keluar' : 'Masuk',
-                color: Colors.orange,
-                onTap: () {
-                  if (isLoggedIn) {
-                    _logout(context);
-                  } else {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const LoginScreen()),
-                    );
-                  }
-                },
+              const SizedBox(width: 12),
+              _buildHeaderIconButton(
+                icon: Icons.notifications_none_rounded,
+                onTap: () {},
               ),
             ],
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildShortcutButton({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 100,
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 15,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-              child: Icon(icon, color: Colors.white, size: 28),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              label,
-              style: TextStyle(
-                color: Colors.grey[800],
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }
 
-  Widget _buildSectionTitle(String title, String action, VoidCallback onTap) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(25, 60, 25, 15),
+  Widget _buildHeaderIconButton({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(25),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.grey[200]?.withOpacity(0.7),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: Colors.black87, size: 22),
+      ),
+    );
+  }
+
+  // Hero Banner
+  Widget _buildHeroBanner() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF008B8B), Color(0xFF00B4C0)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: warnaTosca.withOpacity(0.3),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF2C3E50),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.25),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    '🌟 Spesial Hari Ini',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Petualangan Baru\nMenunggu!',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    height: 1.3,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const QuizScreen()),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: warnaTosca,
+                    shape: const StadiumBorder(),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
+                    elevation: 0,
+                  ),
+                  child: const Text(
+                    'Mulai Sekarang',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                ),
+              ],
             ),
           ),
-          GestureDetector(
-            onTap: onTap,
-            child: Text(
-              action,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: Colors.grey,
-              ),
+          // Placeholder for illustration
+          Opacity(
+            opacity: 0.8,
+            child: Icon(
+              Icons.menu_book_rounded,
+              size: 90,
+              color: Colors.white.withOpacity(0.4),
             ),
           ),
         ],
@@ -462,24 +356,92 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildBukuCard(dynamic materi) {
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => DetailMateriScreen(materi: materi),
-        ),
+  // Menu & Statistik Cards
+  Widget _buildStatsCards() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        children: [
+          _buildStatCard(
+            title: 'Total Skor',
+            value: totalPoin.toString(),
+            subValue: ' pts',
+            icon: Icons.emoji_events_rounded,
+            color: Colors.amber,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const QuizScreen()),
+            ),
+          ),
+          const SizedBox(width: 14),
+          _buildStatCard(
+            title: 'Buku Dongeng',
+            value: 'E-Book',
+            subValue: '',
+            icon: Icons.menu_book_rounded,
+            color: Colors.blue,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    const DaftarCeritaScreen(initialFilter: 'Ebook'),
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          _buildStatCard(
+            title: 'Video',
+            value: 'Tonton',
+            subValue: '',
+            icon: Icons.play_circle_fill_rounded,
+            color: Colors.purple,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    const DaftarCeritaScreen(initialFilter: 'Video'),
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          _buildStatCard(
+            title: 'Favorit',
+            value: 'Koleksi',
+            subValue: '',
+            icon: Icons.bookmark_rounded,
+            color: Colors.redAccent,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const BookmarkScreen()),
+            ),
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _buildStatCard({
+    required String title,
+    required String value,
+    required String subValue,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
       child: Container(
-        width: 150,
-        margin: const EdgeInsets.only(right: 18, bottom: 15),
+        width: 130,
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(15),
+          borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.04),
-              blurRadius: 10,
+              blurRadius: 15,
               offset: const Offset(0, 5),
             ),
           ],
@@ -487,238 +449,58 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(15),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, color: color, size: 20),
                 ),
-                child: materi['url_sampul'] != null
-                    ? CachedNetworkImage(
-                        imageUrl: materi['url_sampul'],
-                        cacheKey: materi['id'].toString() + '_sampul',
-                        width: double.infinity,
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) =>
-                            Container(color: Colors.grey[100]),
-                        errorWidget: (context, url, error) => Container(
-                          color: Colors.grey[100],
-                          child: const Icon(
-                            Icons.broken_image_rounded,
-                            color: Colors.grey,
-                          ),
-                        ),
-                      )
-                    : Container(
-                        color: Colors.blue[50],
-                        width: double.infinity,
-                        child: const Icon(
-                          Icons.menu_book_rounded,
-                          size: 40,
-                          color: Colors.blueAccent,
-                        ),
-                      ),
+                Icon(
+                  Icons.arrow_outward_rounded,
+                  size: 16,
+                  color: Colors.grey[300],
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              title,
+              style: TextStyle(
+                color: Colors.grey[500],
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    materi['judul'] ?? 'Tanpa Judul',
+            const SizedBox(height: 4),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Expanded(
+                  child: Text(
+                    value,
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                      height: 1.2,
+                      fontSize: 20,
+                      color: Colors.black87,
                     ),
-                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 6),
+                ),
+                if (subValue.isNotEmpty)
                   Text(
-                    'E-Book PDF',
+                    subValue,
                     style: TextStyle(
-                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
                       color: Colors.grey[500],
-                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildVideoCard(dynamic materi) {
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => DetailMateriScreen(materi: materi),
-        ),
-      ),
-      child: Container(
-        width: 240,
-        margin: const EdgeInsets.only(right: 18, bottom: 15),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(15),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 5),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  ClipRRect(
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(15),
-                    ),
-                    child: materi['url_sampul'] != null
-                        ? CachedNetworkImage(
-                            imageUrl: materi['url_sampul'],
-                            cacheKey: materi['id'].toString() + '_sampul',
-                            fit: BoxFit.cover,
-                            placeholder: (context, url) =>
-                                Container(color: Colors.grey[100]),
-                          )
-                        : Container(
-                            color: Colors.purple[50],
-                            child: const Icon(
-                              Icons.video_library_rounded,
-                              size: 40,
-                              color: Colors.purpleAccent,
-                            ),
-                          ),
-                  ),
-                  Container(
-                    decoration: BoxDecoration(
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(15),
-                      ),
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withOpacity(0.4),
-                        ],
-                      ),
-                    ),
-                  ),
-                  Center(
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.3),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.play_arrow_rounded,
-                        color: Colors.white,
-                        size: 30,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Text(
-                materi['judul'] ?? 'Tanpa Judul',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCeritaCard(dynamic materi, int index) {
-    final List<Color> pastelColors = [
-      const Color(0xFFFFB7B2),
-      const Color(0xFFFFDAC1),
-      const Color(0xFFE2F0CB),
-      const Color(0xFFB5EAD7),
-      const Color(0xFFC7CEEA),
-    ];
-    final color = pastelColors[index % pastelColors.length];
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => DetailMateriScreen(materi: materi),
-        ),
-      ),
-      child: Container(
-        width: 140,
-        margin: const EdgeInsets.only(right: 15),
-        padding: const EdgeInsets.all(15),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(15),
-          boxShadow: [
-            BoxShadow(
-              color: color.withOpacity(0.4),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const CircleAvatar(
-              radius: 18,
-              backgroundColor: Colors.white,
-              child: Icon(
-                Icons.article_rounded,
-                size: 20,
-                color: Colors.black54,
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  materi['judul'] ?? 'Cerita Pilihan',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                    fontSize: 13,
-                    height: 1.2,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  'Cerita Komunitas',
-                  style: TextStyle(
-                    color: Colors.black.withOpacity(0.5),
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
               ],
             ),
           ],
@@ -727,26 +509,420 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildEmptyState(String text) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.inbox_rounded, size: 40, color: Colors.grey[300]),
-          const SizedBox(height: 8),
-          Text(text, style: TextStyle(color: Colors.grey[400], fontSize: 13)),
-        ],
-      ),
+  // Jelajahi Dongeng Section
+  Widget _buildExploreSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Jelajahi Dongeng',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  color: Colors.black87,
+                ),
+              ),
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const DaftarCeritaScreen(),
+                    ),
+                  );
+                },
+                child: const Text(
+                  'Lihat Semua >',
+                  style: TextStyle(
+                    color: warnaTosca,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 15),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(
+            children: listFilter.map((filter) {
+              final isSelected = filterAktif == filter;
+              return Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: ChoiceChip(
+                  label: Text(filter),
+                  selected: isSelected,
+                  onSelected: (selected) {
+                    if (selected) setState(() => filterAktif = filter);
+                  },
+                  selectedColor: warnaTosca,
+                  backgroundColor: Colors.white,
+                  labelStyle: TextStyle(
+                    color: isSelected ? Colors.white : Colors.grey[600],
+                    fontWeight: isSelected
+                        ? FontWeight.bold
+                        : FontWeight.normal,
+                    fontSize: 13,
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    side: BorderSide(
+                      color: isSelected ? warnaTosca : Colors.grey[300]!,
+                    ),
+                  ),
+                  showCheckmark: false,
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(height: 20),
+        isLoading
+            ? const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 40),
+                  child: CircularProgressIndicator(color: warnaTosca),
+                ),
+              )
+            : materiTampil.isEmpty
+            ? const Padding(
+                padding: EdgeInsets.symmetric(vertical: 40),
+                child: Center(
+                  child: Text(
+                    'Belum ada materi.',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ),
+              )
+            : Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: materiTampil.length,
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    childAspectRatio:
+                        0.70, // Updated ratio for full background image
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                  ),
+                  itemBuilder: (context, index) {
+                    return _buildCinematicGridCard(materiTampil[index]);
+                  },
+                ),
+              ),
+      ],
     );
   }
 
-  Widget _buildLoadingCard() {
-    return const Center(
-      child: SizedBox(
-        width: 30,
-        height: 30,
-        child: CircularProgressIndicator(color: warnaTosca, strokeWidth: 3),
+  Widget _buildCinematicGridCard(dynamic materi) {
+    final isPdf = materi['tipe'] == 'pdf';
+    final isCerita = materi['tipe'] == 'cerita';
+    String kategoriLabel = isPdf ? 'Ebook' : (isCerita ? 'Fabel' : 'Video');
+    Color badgeColor = isPdf
+        ? Colors.blue
+        : (isCerita ? Colors.orange : Colors.purple);
+    IconData cardIcon = isPdf
+        ? Icons.menu_book_rounded
+        : (isCerita ? Icons.article_rounded : Icons.play_circle_fill_rounded);
+
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => DetailMateriScreen(materi: materi),
+        ),
       ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Background Image
+            materi['url_sampul'] != null
+                ? CachedNetworkImage(
+                    imageUrl: materi['url_sampul'],
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) =>
+                        Container(color: Colors.grey[200]),
+                    errorWidget: (context, url, error) => Container(
+                      color: Colors.grey[200],
+                      child: Icon(cardIcon, size: 40, color: badgeColor),
+                    ),
+                  )
+                : Container(
+                    color: Colors.grey[200],
+                    child: Icon(cardIcon, size: 40, color: badgeColor),
+                  ),
+            // Gradient Overlay
+            Positioned.fill(
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [Colors.black87, Colors.transparent],
+                    stops: [0.0, 0.6],
+                  ),
+                ),
+              ),
+            ),
+            // Badges
+            Positioned(
+              top: 10,
+              left: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.85),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(cardIcon, size: 10, color: badgeColor),
+                    const SizedBox(width: 4),
+                    Text(
+                      kategoriLabel,
+                      style: TextStyle(
+                        color: badgeColor,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Positioned(
+              top: 10,
+              right: 10,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.85),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.bookmark_border_rounded,
+                  size: 16,
+                  color: warnaTosca,
+                ),
+              ),
+            ),
+            // Bottom Texts
+            Positioned(
+              bottom: 12,
+              left: 12,
+              right: 12,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    materi['judul'] ?? 'Tanpa Judul',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      height: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.star_rounded,
+                            color: Colors.amber,
+                            size: 12,
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            materi['rating_rata_rata'] != null
+                                ? materi['rating_rata_rata'].toString()
+                                : '0.0',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.access_time_rounded,
+                            color: Colors.white70,
+                            size: 12,
+                          ),
+                          const SizedBox(width: 3),
+                          const Text(
+                            '5 mnt',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =======================================================
+// DELEGATE PENCARIAN (SEARCH)
+// =======================================================
+class MateriSearchDelegate extends SearchDelegate {
+  final List semuaMateri;
+  MateriSearchDelegate({required this.semuaMateri});
+
+  @override
+  String get searchFieldLabel => 'Cari judul materi...';
+
+  @override
+  List<Widget>? buildActions(BuildContext context) {
+    return [
+      if (query.isNotEmpty)
+        IconButton(
+          icon: const Icon(Icons.clear, color: Colors.grey),
+          onPressed: () => query = '',
+        ),
+    ];
+  }
+
+  @override
+  Widget? buildLeading(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.arrow_back_rounded, color: Colors.black87),
+      onPressed: () => close(context, null),
+    );
+  }
+
+  @override
+  Widget buildResults(BuildContext context) => _buildHasilPencarian();
+
+  @override
+  Widget buildSuggestions(BuildContext context) => _buildHasilPencarian();
+
+  Widget _buildHasilPencarian() {
+    final hasil = semuaMateri.where((m) {
+      final judul = m['judul'].toString().toLowerCase();
+      return judul.contains(query.toLowerCase());
+    }).toList();
+
+    if (hasil.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.search_off_rounded, size: 80, color: Colors.grey[300]),
+            const SizedBox(height: 15),
+            Text(
+              'Tidak ada materi ditemukan.',
+              style: TextStyle(color: Colors.grey[600], fontSize: 16),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.all(20),
+      itemCount: hasil.length,
+      itemBuilder: (context, index) {
+        final materi = hasil[index];
+        final bool isPdf = materi['tipe'] == 'pdf';
+        final bool isCerita = materi['tipe'] == 'cerita';
+
+        IconData icon = isPdf
+            ? Icons.menu_book_rounded
+            : (isCerita
+                  ? Icons.article_rounded
+                  : Icons.play_circle_fill_rounded);
+        Color bgColor = isPdf
+            ? Colors.blue[50]!
+            : (isCerita ? Colors.orange[50]! : Colors.purple[50]!);
+        Color iconColor = isPdf
+            ? Colors.blue[300]!
+            : (isCerita ? Colors.orange[300]! : Colors.purple[300]!);
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: ListTile(
+            contentPadding: const EdgeInsets.all(10),
+            leading: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: SizedBox(
+                width: 60,
+                height: 60,
+                child: materi['url_sampul'] != null
+                    ? CachedNetworkImage(
+                        imageUrl: materi['url_sampul'],
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) =>
+                            Container(color: Colors.grey[100]),
+                      )
+                    : Container(
+                        color: bgColor,
+                        child: Icon(icon, color: iconColor),
+                      ),
+              ),
+            ),
+            title: Text(
+              materi['judul'],
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Text(
+              isPdf
+                  ? 'E-Book PDF'
+                  : (isCerita ? 'Cerita Komunitas' : 'Video Pembelajaran'),
+              style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+            ),
+            onTap: () {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => DetailMateriScreen(materi: materi),
+                ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }

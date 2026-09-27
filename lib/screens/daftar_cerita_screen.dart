@@ -19,14 +19,21 @@ class _DaftarCeritaScreenState extends State<DaftarCeritaScreen> {
   List semuaMateri = [];
   List materiTampil = [];
   bool isLoading = true;
-  bool isGridMode = true;
+  String filterAktif = 'Semua';
+  String searchQuery = '';
   final List<String> listFilter = ['Semua', 'Ebook', 'Video', 'Cerita Pilihan'];
-  late String filterAktif;
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     filterAktif = widget.initialFilter;
+    _searchController.addListener(() {
+      setState(() {
+        searchQuery = _searchController.text.toLowerCase();
+        _terapkanFilter();
+      });
+    });
     _muatDataLokal();
     _fetchMateriServer();
   }
@@ -75,17 +82,24 @@ class _DaftarCeritaScreenState extends State<DaftarCeritaScreen> {
 
   void _terapkanFilter() {
     setState(() {
-      if (filterAktif == 'Semua') {
-        materiTampil = List.from(semuaMateri);
-      } else if (filterAktif == 'Ebook') {
-        materiTampil = semuaMateri.where((m) => m['tipe'] == 'pdf').toList();
-      } else if (filterAktif == 'Video') {
-        materiTampil = semuaMateri
+      List tempList = List.from(semuaMateri);
+
+      if (filterAktif == 'Ebook')
+        tempList = tempList.where((m) => m['tipe'] == 'pdf').toList();
+      else if (filterAktif == 'Video')
+        tempList = tempList
             .where((m) => m['tipe'] == 'video' || m['tipe'] == 'mp4')
             .toList();
-      } else if (filterAktif == 'Cerita Pilihan') {
-        materiTampil = semuaMateri.where((m) => m['tipe'] == 'cerita').toList();
+      else if (filterAktif == 'Cerita Pilihan')
+        tempList = tempList.where((m) => m['tipe'] == 'cerita').toList();
+
+      if (searchQuery.isNotEmpty) {
+        tempList = tempList.where((m) {
+          final judul = m['judul']?.toString().toLowerCase() ?? '';
+          return judul.contains(searchQuery);
+        }).toList();
       }
+      materiTampil = tempList;
     });
   }
 
@@ -95,78 +109,81 @@ class _DaftarCeritaScreenState extends State<DaftarCeritaScreen> {
   }
 
   @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
         title: const Text(
-          'Jelajahi Materi',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
+          'Jelajahi Dongeng',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
         ),
-        backgroundColor: const Color(0xFFF8F9FA),
+        backgroundColor: Colors.transparent,
         foregroundColor: Colors.black87,
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: Icon(
-              isGridMode ? Icons.view_list_rounded : Icons.grid_view_rounded,
-              color: warnaTosca,
-            ),
-            onPressed: () => setState(() => isGridMode = !isGridMode),
-          ),
-          const SizedBox(width: 10),
-        ],
+        centerTitle: true,
       ),
       body: Column(
         children: [
-          Container(
-            height: 50,
-            margin: const EdgeInsets.only(bottom: 10, top: 5),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'Cari dongeng favoritmu...',
+                  prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 40,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 15),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               itemCount: listFilter.length,
               itemBuilder: (context, index) {
                 final filter = listFilter[index];
                 final isSelected = filterAktif == filter;
-                return GestureDetector(
-                  onTap: () => _ubahFilter(filter),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 300),
-                    margin: const EdgeInsets.only(right: 10),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isSelected ? warnaTosca : Colors.white,
-                      borderRadius: BorderRadius.circular(25),
-                      boxShadow: isSelected
-                          ? [
-                              BoxShadow(
-                                color: warnaTosca.withOpacity(0.4),
-                                blurRadius: 8,
-                                offset: const Offset(0, 3),
-                              ),
-                            ]
-                          : [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.05),
-                                blurRadius: 5,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                    ),
-                    child: Center(
-                      child: Text(
-                        filter,
-                        style: TextStyle(
-                          color: isSelected ? Colors.white : Colors.grey[700],
-                          fontWeight: isSelected
-                              ? FontWeight.bold
-                              : FontWeight.w600,
-                          fontSize: 14,
+                return Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: GestureDetector(
+                    onTap: () => _ubahFilter(filter),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isSelected ? warnaTosca : Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: isSelected
+                            ? null
+                            : Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: Center(
+                        child: Text(
+                          filter,
+                          style: TextStyle(
+                            color: isSelected ? Colors.white : Colors.grey[700],
+                            fontWeight: isSelected
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
                     ),
@@ -175,6 +192,7 @@ class _DaftarCeritaScreenState extends State<DaftarCeritaScreen> {
               },
             ),
           ),
+          const SizedBox(height: 16),
           Expanded(
             child: isLoading
                 ? const Center(
@@ -185,42 +203,27 @@ class _DaftarCeritaScreenState extends State<DaftarCeritaScreen> {
                 : RefreshIndicator(
                     onRefresh: _fetchMateriServer,
                     color: warnaTosca,
-                    child: isGridMode
-                        ? GridView.builder(
-                            physics: const AlwaysScrollableScrollPhysics(
-                              parent: BouncingScrollPhysics(),
-                            ),
-                            padding: const EdgeInsets.only(
-                              left: 20,
-                              right: 20,
-                              bottom: 100,
-                              top: 10,
-                            ),
-                            gridDelegate:
-                                const SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: 2,
-                                  crossAxisSpacing: 15,
-                                  mainAxisSpacing: 15,
-                                  childAspectRatio: 0.65,
-                                ),
-                            itemCount: materiTampil.length,
-                            itemBuilder: (context, index) =>
-                                _buildGridCard(materiTampil[index]),
-                          )
-                        : ListView.builder(
-                            physics: const AlwaysScrollableScrollPhysics(
-                              parent: BouncingScrollPhysics(),
-                            ),
-                            padding: const EdgeInsets.only(
-                              left: 20,
-                              right: 20,
-                              bottom: 100,
-                              top: 10,
-                            ),
-                            itemCount: materiTampil.length,
-                            itemBuilder: (context, index) =>
-                                _buildListCard(materiTampil[index]),
+                    child: GridView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(
+                        parent: BouncingScrollPhysics(),
+                      ),
+                      padding: const EdgeInsets.only(
+                        left: 16,
+                        right: 16,
+                        top: 16,
+                        bottom: 100,
+                      ),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            childAspectRatio: 0.70,
+                            crossAxisSpacing: 16,
+                            mainAxisSpacing: 16,
                           ),
+                      itemCount: materiTampil.length,
+                      itemBuilder: (context, index) =>
+                          _buildGridCard(materiTampil[index]),
+                    ),
                   ),
           ),
         ],
@@ -231,15 +234,14 @@ class _DaftarCeritaScreenState extends State<DaftarCeritaScreen> {
   Widget _buildGridCard(dynamic materi) {
     final isPdf = materi['tipe'] == 'pdf';
     final isCerita = materi['tipe'] == 'cerita';
+    String kategoriLabel = isPdf ? 'Ebook' : (isCerita ? 'Fabel' : 'Video');
+    Color badgeColor = isPdf
+        ? Colors.blue
+        : (isCerita ? Colors.orange : Colors.purple);
     IconData cardIcon = isPdf
         ? Icons.menu_book_rounded
         : (isCerita ? Icons.article_rounded : Icons.play_circle_fill_rounded);
-    Color iconColor = isPdf
-        ? Colors.blue[300]!
-        : (isCerita ? Colors.orange[300]! : Colors.purple[300]!);
-    Color bgColor = isPdf
-        ? Colors.blue[50]!
-        : (isCerita ? Colors.orange[50]! : Colors.purple[50]!);
+
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
@@ -247,53 +249,87 @@ class _DaftarCeritaScreenState extends State<DaftarCeritaScreen> {
           builder: (context) => DetailMateriScreen(materi: materi),
         ),
       ),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Stack(
+          fit: StackFit.expand,
           children: [
-            Expanded(
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(20),
+            // Background Image
+            materi['url_sampul'] != null
+                ? CachedNetworkImage(
+                    imageUrl: materi['url_sampul'],
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) =>
+                        Container(color: Colors.grey[200]),
+                    errorWidget: (context, url, error) => Container(
+                      color: Colors.grey[200],
+                      child: Icon(cardIcon, size: 40, color: badgeColor),
+                    ),
+                  )
+                : Container(
+                    color: Colors.grey[200],
+                    child: Icon(cardIcon, size: 40, color: badgeColor),
+                  ),
+            // Gradient Overlay
+            Positioned.fill(
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [Colors.black87, Colors.transparent],
+                    stops: [0.0, 0.6],
+                  ),
                 ),
-                child: materi['url_sampul'] != null
-                    ? CachedNetworkImage(
-                        imageUrl: materi['url_sampul'],
-                        cacheKey:
-                            materi['id'].toString() +
-                            '_sampul', // 🚀 FIX: Mengunci Cache
-                        width: double.infinity,
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) =>
-                            Container(color: Colors.grey[100]),
-                        errorWidget: (context, url, error) => Container(
-                          color: Colors.grey[100],
-                          child: const Icon(
-                            Icons.broken_image_rounded,
-                            color: Colors.grey,
-                          ),
-                        ),
-                      )
-                    : Container(
-                        color: bgColor,
-                        width: double.infinity,
-                        child: Icon(cardIcon, size: 50, color: iconColor),
-                      ),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.all(12),
+            // Badges
+            Positioned(
+              top: 10,
+              left: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.85),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(cardIcon, size: 10, color: badgeColor),
+                    const SizedBox(width: 4),
+                    Text(
+                      kategoriLabel,
+                      style: TextStyle(
+                        color: badgeColor,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Positioned(
+              top: 10,
+              right: 10,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.85),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.bookmark_border_rounded,
+                  size: 16,
+                  color: warnaTosca,
+                ),
+              ),
+            ),
+            // Bottom Texts
+            Positioned(
+              bottom: 12,
+              left: 12,
+              right: 12,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -302,144 +338,56 @@ class _DaftarCeritaScreenState extends State<DaftarCeritaScreen> {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
                       fontSize: 13,
+                      fontWeight: FontWeight.bold,
                       height: 1.2,
                     ),
                   ),
                   const SizedBox(height: 6),
-                  Text(
-                    isPdf
-                        ? 'E-Book PDF'
-                        : (isCerita ? 'Cerita Pilihan' : 'Video'),
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.grey[500],
-                      fontWeight: FontWeight.bold,
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.star_rounded,
+                            color: Colors.amber,
+                            size: 12,
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            materi['rating_rata_rata'] != null
+                                ? materi['rating_rata_rata'].toString()
+                                : '0.0',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.access_time_rounded,
+                            color: Colors.white70,
+                            size: 12,
+                          ),
+                          const SizedBox(width: 3),
+                          const Text(
+                            '5 mnt',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildListCard(dynamic materi) {
-    final isPdf = materi['tipe'] == 'pdf';
-    final isCerita = materi['tipe'] == 'cerita';
-    IconData cardIcon = isPdf
-        ? Icons.menu_book_rounded
-        : (isCerita ? Icons.article_rounded : Icons.play_circle_fill_rounded);
-    Color iconColor = isPdf
-        ? Colors.blue[300]!
-        : (isCerita ? Colors.orange[300]! : Colors.purple[300]!);
-    Color bgColor = isPdf
-        ? Colors.blue[50]!
-        : (isCerita ? Colors.orange[50]! : Colors.purple[50]!);
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => DetailMateriScreen(materi: materi),
-        ),
-      ),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 15),
-        height: 110,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: const BorderRadius.horizontal(
-                left: Radius.circular(20),
-              ),
-              child: SizedBox(
-                width: 100,
-                height: 110,
-                child: materi['url_sampul'] != null
-                    ? CachedNetworkImage(
-                        imageUrl: materi['url_sampul'],
-                        cacheKey:
-                            materi['id'].toString() +
-                            '_sampul', // 🚀 FIX: Mengunci Cache
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) =>
-                            Container(color: Colors.grey[100]),
-                        errorWidget: (context, url, error) => Container(
-                          color: Colors.grey[100],
-                          child: const Icon(
-                            Icons.broken_image_rounded,
-                            color: Colors.grey,
-                          ),
-                        ),
-                      )
-                    : Container(
-                        color: bgColor,
-                        child: Icon(cardIcon, size: 40, color: iconColor),
-                      ),
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(15),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      materi['judul'] ?? 'Tanpa Judul',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                        height: 1.2,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: bgColor.withOpacity(0.5),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        isPdf
-                            ? 'E-Book PDF'
-                            : (isCerita ? 'Cerita Pilihan' : 'Video'),
-                        style: TextStyle(
-                          color: iconColor.withOpacity(0.8),
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.only(right: 15),
-              child: Icon(
-                Icons.arrow_forward_ios_rounded,
-                size: 16,
-                color: Colors.grey,
               ),
             ),
           ],
@@ -453,18 +401,10 @@ class _DaftarCeritaScreenState extends State<DaftarCeritaScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            filterAktif == 'Cerita Pilihan'
-                ? Icons.auto_awesome_rounded
-                : Icons.search_off_rounded,
-            size: 80,
-            color: Colors.grey[300],
-          ),
+          Icon(Icons.search_off_rounded, size: 80, color: Colors.grey[300]),
           const SizedBox(height: 15),
           Text(
-            filterAktif == 'Cerita Pilihan'
-                ? 'Cerita pilihan belum tersedia.'
-                : 'Materi tidak ditemukan.',
+            'Materi tidak ditemukan.',
             style: TextStyle(
               fontSize: 16,
               color: Colors.grey[600],

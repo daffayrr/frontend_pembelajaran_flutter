@@ -17,8 +17,9 @@ class BookmarkScreen extends StatefulWidget {
 class _BookmarkScreenState extends State<BookmarkScreen> {
   List<dynamic> listBookmark = [];
   bool isLoading = true;
-  bool isGridMode = false; // Default List
   String? userId;
+  String filterAktif = 'Semua';
+  final List<String> listFilter = ['Semua', 'Ebook', 'Video', 'Cerita Pilihan'];
 
   @override
   void initState() {
@@ -37,213 +38,218 @@ class _BookmarkScreenState extends State<BookmarkScreen> {
       final response = await http.get(Uri.parse('$endpointFavorit/$userId'));
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        if (mounted)
+        if (mounted) {
           setState(() {
-            listBookmark = data['data'];
+            listBookmark = data['data'] ?? [];
             isLoading = false;
           });
+        }
+      } else {
+        if (mounted) setState(() => isLoading = false);
       }
     } catch (e) {
       if (mounted) setState(() => isLoading = false);
     }
   }
 
+  void _konfirmasiHapus(int index) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Hapus Favorit?'),
+        content: const Text(
+          'Apakah kamu yakin ingin menghapus dongeng ini dari koleksi favoritmu?',
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Batal', style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _hapusBookmarkAPI(index);
+            },
+            child: const Text('Hapus', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _hapusBookmarkAPI(int index) async {
-    final deletedItem = listBookmark[index];
-    setState(() => listBookmark.removeAt(index));
-    try {
-      final response = await http.delete(
-        Uri.parse('$endpointFavorit/$userId/${deletedItem['id']}'),
-      );
-      if (response.statusCode == 200) {
-        if (mounted)
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Materi dihapus dari favorit'),
-              backgroundColor: Colors.redAccent,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+    final itemToRemove = _getFilteredList()[index];
+    final realIndex = listBookmark.indexWhere(
+      (element) => element['id'] == itemToRemove['id'],
+    );
+
+    if (realIndex != -1) {
+      setState(() => listBookmark.removeAt(realIndex));
+      try {
+        final response = await http.delete(
+          Uri.parse('$endpointFavorit/$userId/${itemToRemove['id']}'),
+        );
+        if (response.statusCode == 200) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Materi dihapus dari favorit'),
+                backgroundColor: Colors.redAccent,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                duration: const Duration(seconds: 2),
               ),
-              duration: const Duration(seconds: 2),
-            ),
-          );
-      } else {
+            );
+          }
+        } else {
+          _loadBookmarksAPI();
+        }
+      } catch (e) {
         _loadBookmarksAPI();
       }
-    } catch (e) {
-      _loadBookmarksAPI();
     }
+  }
+
+  List<dynamic> _getFilteredList() {
+    List<dynamic> tempList = List.from(listBookmark);
+    if (filterAktif == 'Ebook') {
+      tempList = tempList.where((m) => m['tipe'] == 'pdf').toList();
+    } else if (filterAktif == 'Video') {
+      tempList = tempList
+          .where((m) => m['tipe'] == 'video' || m['tipe'] == 'mp4')
+          .toList();
+    } else if (filterAktif == 'Cerita Pilihan') {
+      tempList = tempList.where((m) => m['tipe'] == 'cerita').toList();
+    }
+    return tempList;
   }
 
   @override
   Widget build(BuildContext context) {
+    final filteredList = _getFilteredList();
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text(
-          'Materi Favorit',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
-        ),
-        backgroundColor: const Color(0xFFF8F9FA),
-        foregroundColor: Colors.black87,
+        backgroundColor: Colors.white,
         elevation: 0,
-        centerTitle: false,
-        actions: [
-          IconButton(
-            icon: Icon(
-              isGridMode ? Icons.view_list_rounded : Icons.grid_view_rounded,
-              color: warnaTosca,
-            ),
-            onPressed: () => setState(() => isGridMode = !isGridMode),
-          ),
-          const SizedBox(width: 10),
-        ],
-      ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator(color: warnaTosca))
-          : (listBookmark.isEmpty || userId == null)
-          ? _buildEmptyState()
-          : RefreshIndicator(
-              onRefresh: _loadBookmarksAPI,
-              color: warnaTosca,
-              child: isGridMode
-                  ? GridView.builder(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.only(
-                        left: 20,
-                        right: 20,
-                        top: 10,
-                        bottom: 120,
-                      ),
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            crossAxisSpacing: 15,
-                            mainAxisSpacing: 15,
-                            childAspectRatio: 0.65,
-                          ),
-                      itemCount: listBookmark.length,
-                      itemBuilder: (context, index) =>
-                          _buildGridCard(listBookmark[index], index),
-                    )
-                  : ListView.builder(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.only(
-                        left: 20,
-                        right: 20,
-                        top: 10,
-                        bottom: 120,
-                      ),
-                      itemCount: listBookmark.length,
-                      itemBuilder: (context, index) =>
-                          _buildListCard(listBookmark[index], index),
-                    ),
-            ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.bookmark_border_rounded,
-            size: 80,
-            color: Colors.grey[300],
-          ),
-          const SizedBox(height: 15),
-          Text(
-            userId == null
-                ? 'Silakan login terlebih dahulu.'
-                : 'Belum ada materi favorit.',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[600],
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // --- KARTU TAMPILAN LIST (DENGAN GESER HAPUS) ---
-  Widget _buildListCard(dynamic materi, int index) {
-    return Dismissible(
-      key: Key(materi['id'].toString()),
-      direction: DismissDirection.endToStart,
-      onDismissed: (direction) => _hapusBookmarkAPI(index),
-      background: Container(
-        margin: const EdgeInsets.only(bottom: 15),
-        decoration: BoxDecoration(
-          color: Colors.redAccent,
-          borderRadius: BorderRadius.circular(20),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black87),
+          onPressed: () => Navigator.pop(context),
         ),
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 25),
-        child: const Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.delete_sweep_rounded, color: Colors.white, size: 30),
-            SizedBox(height: 4),
-            Text(
-              'Hapus',
+            const Text(
+              'Koleksi Favorit',
               style: TextStyle(
-                color: Colors.white,
+                color: Colors.black87,
                 fontWeight: FontWeight.bold,
-                fontSize: 11,
+                fontSize: 18,
               ),
+            ),
+            Text(
+              'Dongeng yang sudah kamu simpan',
+              style: TextStyle(color: Colors.grey[500], fontSize: 11),
             ),
           ],
         ),
-      ),
-      child: _kartuKonten(materi, true),
-    );
-  }
+        actions: [
+          Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.search_rounded, color: Colors.black87),
+                onPressed: () {},
+              ),
 
-  // --- KARTU TAMPILAN GRID (DENGAN TAHAN/LONG PRESS HAPUS) ---
-  Widget _buildGridCard(dynamic materi, int index) {
-    return GestureDetector(
-      onLongPress: () {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text("Hapus Favorit?"),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("Batal"),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  _hapusBookmarkAPI(index);
-                },
-                child: const Text("Hapus", style: TextStyle(color: Colors.red)),
-              ),
+              const SizedBox(width: 8),
             ],
           ),
-        );
-      },
-      child: _kartuKonten(materi, false),
+        ],
+      ),
+      body: Column(
+        children: [
+          // Filter Chips
+          SizedBox(
+            height: 50,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: listFilter.length,
+              itemBuilder: (context, index) {
+                final filter = listFilter[index];
+                final isSelected = filterAktif == filter;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() => filterAktif = filter);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isSelected ? warnaTosca : Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: isSelected
+                            ? null
+                            : Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: Center(
+                        child: Text(
+                          filter,
+                          style: TextStyle(
+                            color: isSelected ? Colors.white : Colors.grey[700],
+                            fontWeight: isSelected
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          Expanded(
+            child: isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: warnaTosca),
+                  )
+                : filteredList.isEmpty
+                ? _buildEmptyState()
+                : ListView.builder(
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.only(
+                      left: 16,
+                      right: 16,
+                      top: 8,
+                      bottom: 100,
+                    ),
+                    itemCount: filteredList.length,
+                    itemBuilder: (context, index) {
+                      return _buildListItem(filteredList[index], index);
+                    },
+                  ),
+          ),
+        ],
+      ),
     );
   }
 
-  // --- WIDGET HELPER KONTEN KARTU ---
-  Widget _kartuKonten(dynamic materi, bool isList) {
-    final bool isPdf = materi['tipe'] == 'pdf';
-    final bool isCerita = materi['tipe'] == 'cerita';
-    Color iconColor = isPdf
-        ? Colors.blue[300]!
-        : (isCerita ? Colors.orange[300]! : Colors.purple[300]!);
-    Color bgColor = isPdf
-        ? Colors.blue[50]!
-        : (isCerita ? Colors.orange[50]! : Colors.purple[50]!);
-    IconData cardIcon = isPdf
-        ? Icons.menu_book_rounded
-        : (isCerita ? Icons.article_rounded : Icons.play_circle_fill_rounded);
+  Widget _buildListItem(dynamic materi, int index) {
+    final isPdf = materi['tipe'] == 'pdf';
+    final isCerita = materi['tipe'] == 'cerita';
+    String kategoriLabel = isPdf ? 'Ebook' : (isCerita ? 'Fabel' : 'Video');
 
     return GestureDetector(
       onTap: () {
@@ -252,141 +258,241 @@ class _BookmarkScreenState extends State<BookmarkScreen> {
           MaterialPageRoute(
             builder: (context) => DetailMateriScreen(materi: materi),
           ),
-        ).then((_) => _loadBookmarksAPI());
+        );
       },
       child: Container(
-        margin: EdgeInsets.only(bottom: isList ? 15 : 0),
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey.shade100, width: 1.5),
         ),
-        child: isList
-            ? Row(
-                // TAMPILAN LIST
-                children: [
-                  ClipRRect(
-                    borderRadius: const BorderRadius.horizontal(
-                      left: Radius.circular(20),
-                    ),
-                    child: SizedBox(
-                      width: 110,
-                      height: 120,
-                      child: materi['url_sampul'] != null
-                          ? CachedNetworkImage(
-                              imageUrl: materi['url_sampul'],
-                              fit: BoxFit.cover,
-                              placeholder: (context, url) =>
-                                  Container(color: Colors.grey[100]),
-                            )
-                          : Container(
-                              color: bgColor,
-                              child: Icon(cardIcon, color: iconColor, size: 40),
+        child: Row(
+          children: [
+            // Kiri: Gambar
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: SizedBox(
+                width: 80,
+                height: 80,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    materi['url_sampul'] != null
+                        ? CachedNetworkImage(
+                            imageUrl: materi['url_sampul'],
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) =>
+                                Container(color: Colors.grey[200]),
+                            errorWidget: (context, url, error) => Container(
+                              color: Colors.grey[200],
+                              child: const Icon(
+                                Icons.image,
+                                color: Colors.grey,
+                              ),
                             ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.all(15),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            materi['judul'] ?? 'Tanpa Judul',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                              height: 1.2,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
+                          )
+                        : Container(
+                            color: Colors.grey[200],
+                            child: const Icon(Icons.image, color: Colors.grey),
                           ),
-                          const SizedBox(height: 10),
-                          Text(
-                            isPdf
-                                ? 'E-Book PDF'
-                                : (isCerita ? 'Cerita Pilihan' : 'Video'),
-                            style: TextStyle(
-                              color: Colors.grey[500],
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
+                    Positioned(
+                      top: 4,
+                      left: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: warnaTosca.withOpacity(0.85),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          kategoriLabel,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 8,
+                            fontWeight: FontWeight.bold,
                           ),
-                        ],
+                        ),
                       ),
                     ),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.only(right: 18),
-                    child: Icon(
-                      Icons.arrow_forward_ios_rounded,
-                      size: 16,
-                      color: Colors.grey,
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.3),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.bookmark_rounded,
+                          color: Colors.white,
+                          size: 12,
+                        ),
+                      ),
                     ),
-                  ),
-                ],
-              )
-            : Column(
-                // TAMPILAN GRID
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Tengah: Teks
+            Expanded(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(20),
-                      ),
-                      child: materi['url_sampul'] != null
-                          ? CachedNetworkImage(
-                              imageUrl: materi['url_sampul'],
-                              width: double.infinity,
-                              fit: BoxFit.cover,
-                              placeholder: (context, url) =>
-                                  Container(color: Colors.grey[100]),
-                            )
-                          : Container(
-                              color: bgColor,
-                              width: double.infinity,
-                              child: Icon(cardIcon, size: 50, color: iconColor),
-                            ),
+                  Text(
+                    materi['judul'] ?? 'Tanpa Judul',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: Colors.black87,
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          materi['judul'] ?? 'Tanpa Judul',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                            height: 1.2,
-                          ),
+                  const SizedBox(height: 4),
+                  Text(
+                    kategoriLabel == 'Fabel'
+                        ? 'Fabel Nusantara'
+                        : 'Materi Belajar',
+                    style: TextStyle(color: Colors.grey[500], fontSize: 11),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.star_rounded,
+                        color: Colors.amber,
+                        size: 14,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        materi['rating_rata_rata'] != null
+                            ? materi['rating_rata_rata'].toString()
+                            : '0.0',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black54,
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          isPdf
-                              ? 'E-Book PDF'
-                              : (isCerita ? 'Cerita Pilihan' : 'Video'),
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.grey[500],
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(width: 12),
+                      Icon(
+                        Icons.access_time_rounded,
+                        color: Colors.grey[400],
+                        size: 14,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '5 mnt',
+                        style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                      ),
+                    ],
                   ),
                 ],
               ),
+            ),
+            // Kanan: Aksi (Delete)
+            IconButton(
+              icon: Icon(Icons.delete_outline_rounded, color: Colors.grey[400]),
+              onPressed: () => _konfirmasiHapus(index),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 40),
+        child: Container(
+          padding: const EdgeInsets.all(32),
+          decoration: BoxDecoration(
+            color: warnaTosca.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: warnaTosca.withOpacity(0.1), width: 1.5),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.menu_book_rounded,
+                  size: 48,
+                  color: warnaTosca,
+                ),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'Belum ada dongeng favorit.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Mulai jelajahi dan simpan dongeng yang kamu suka!',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey[600],
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context); // Kembali ke tab sebelumnya/dashboard
+                },
+                icon: const Icon(
+                  Icons.explore_rounded,
+                  size: 18,
+                  color: Colors.white,
+                ),
+                label: const Text(
+                  'Jelajahi Dongeng',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: warnaTosca,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

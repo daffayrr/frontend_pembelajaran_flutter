@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:frontend_pembelajaran_flutter/screens/main_screen.dart';
 import 'package:frontend_pembelajaran_flutter/constants/colors.dart';
 
@@ -9,18 +10,44 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(milliseconds: 3500), () {
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const MainScreen()),
-        );
-      }
-    });
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
+    );
+
+    _animationController.forward();
+    _initializeApp();
+  }
+
+  Future<void> _initializeApp() async {
+    // Simulasi loading atau pre-fetch data esensial
+    await Future.delayed(const Duration(milliseconds: 2000));
+    // Fetch data awal atau cek auth state bisa dilakukan di sini...
+    // await _fetchData();
+
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const MainScreen()),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
   }
 
   @override
@@ -39,7 +66,7 @@ class _SplashScreenState extends State<SplashScreen> {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
-                  colors: [warnaTosca.withOpacity(0.4), Colors.transparent],
+                  colors: [warnaTosca.withOpacity(0.15), Colors.transparent],
                   stops: const [0.2, 1.0],
                 ),
               ),
@@ -55,7 +82,7 @@ class _SplashScreenState extends State<SplashScreen> {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
-                  colors: [warnaTosca.withOpacity(0.3), Colors.transparent],
+                  colors: [warnaTosca.withOpacity(0.15), Colors.transparent],
                   stops: const [0.2, 1.0],
                 ),
               ),
@@ -70,72 +97,75 @@ class _SplashScreenState extends State<SplashScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Column(
-                      children: [
-                        const SizedBox(height: 60),
-                        Image.asset(
-                          'assets/icon/app_icon.png',
-                          width: 140,
-                          height: 140,
-                          fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) =>
-                              const Icon(Icons.menu_book_rounded, size: 140, color: warnaTosca),
-                        ),
-                        const SizedBox(height: 30),
-                        const Text(
-                          'Gumregah\nDongeng',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.black87,
-                            height: 1.1,
-                            letterSpacing: 1.0,
+                    const SizedBox(), // Spacer atas
+                    // Center (Logo & Title dengan Fade In)
+                    FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Image.asset(
+                            'assets/icon/app_icon.png',
+                            width: 140,
+                            height: 140,
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) =>
+                                const Icon(
+                                  Icons.menu_book_rounded,
+                                  size: 140,
+                                  color: warnaTosca,
+                                ),
                           ),
-                        ),
-                        const SizedBox(height: 20),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(30),
-                            border: Border.all(color: warnaTosca.withOpacity(0.5), width: 1.5),
-                          ),
-                          child: const Text(
-                            'Belajar jadi lebih mudah dan bermakna',
-                            style: TextStyle(fontSize: 12, color: warnaTosca, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
-                    ),
-                    Column(
-                      children: [
-                        SizedBox(
-                          width: 140,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: const LinearProgressIndicator(
-                              minHeight: 5,
-                              backgroundColor: Color(0xFFE0F2F1),
-                              valueColor: AlwaysStoppedAnimation<Color>(warnaTosca),
+                          const SizedBox(height: 30),
+                          Text(
+                            'Gumregah Dongeng',
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.cinzel(
+                              fontSize: 32,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.black87,
+                              height: 1.1,
                             ),
                           ),
+                        ],
+                      ),
+                    ),
+
+                    // Bawah (Loading Indicator & Sponsor)
+                    Column(
+                      children: [
+                        const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: warnaTosca,
+                          ),
                         ),
-                        const SizedBox(height: 15),
-                        const Text(
-                          'Menyiapkan ruang belajarmu...',
-                          style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.w500),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Memuat dunia dongeng...',
+                          style: GoogleFonts.cinzel(
+                            color: Colors.grey[600],
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                        const SizedBox(height: 30),
-                        const Text('Landscape sponsors', style: TextStyle(color: Colors.grey, fontSize: 10)),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 40),
                         Image.asset(
                           'assets/images/logo_sponsor.png',
-                          height: 35,
+                          height: 40,
                           fit: BoxFit.contain,
                           errorBuilder: (context, error, stackTrace) =>
-                              const Text('[Logo Sponsor Area]', style: TextStyle(color: Colors.grey)),
+                              const Text(
+                                '[Logo Sponsor Area]',
+                                style: TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 12,
+                                ),
+                              ),
                         ),
+                        const SizedBox(height: 10),
                       ],
                     ),
                   ],

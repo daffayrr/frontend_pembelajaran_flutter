@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:frontend_pembelajaran_flutter/constants/api.dart';
 import 'package:frontend_pembelajaran_flutter/screens/login_screen.dart';
 import 'package:frontend_pembelajaran_flutter/constants/colors.dart';
 import 'package:frontend_pembelajaran_flutter/screens/main_screen.dart';
-
-// Tambahkan 5 import ini di bagian atas file
 import 'package:frontend_pembelajaran_flutter/screens/edit_profil_screen.dart';
 import 'package:frontend_pembelajaran_flutter/screens/notifikasi_screen.dart';
 import 'package:frontend_pembelajaran_flutter/screens/keamanan_sandi_screen.dart';
@@ -23,6 +24,7 @@ class _AkunScreenState extends State<AkunScreen> {
   bool isLoggedIn = false;
   String namaUser = 'Tamu';
   String roleUser = 'Pengunjung';
+  int _totalPoin = 0;
 
   @override
   void initState() {
@@ -30,7 +32,6 @@ class _AkunScreenState extends State<AkunScreen> {
     _checkLoginStatus();
   }
 
-  // Cek apakah pengguna sudah login atau masih tamu
   Future<void> _checkLoginStatus() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
@@ -42,6 +43,7 @@ class _AkunScreenState extends State<AkunScreen> {
         isLoggedIn = true;
         namaUser = nama ?? 'Pengguna';
         roleUser = role ?? 'Member';
+        _fetchUserScore();
       } else {
         isLoggedIn = false;
         namaUser = 'Tamu';
@@ -50,18 +52,44 @@ class _AkunScreenState extends State<AkunScreen> {
     });
   }
 
-  // Fungsi Logout dengan Dialog Konfirmasi
-  Future<void> _logout(BuildContext context) async {
-    // Jika di akun_screen, pastikan ada logika dialog konfirmasinya ya
-    final prefs = await SharedPreferences.getInstance();
+  Future<void> _fetchUserScore() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? userIdStr = prefs.getString('user_id');
+      if (userIdStr == null || userIdStr.isEmpty) return;
 
-    // HANYA hapus sesi akun, biarkan bookmark tetap aman!
-    await prefs.remove('token');
-    await prefs.remove('user_name');
-    await prefs.remove('user_role');
+      final response = await http.get(
+        Uri.parse('$endpointQuizScore/$userIdStr'),
+        headers: {
+          'Authorization': staticAuthToken,
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        // Safe parsing dari dynamic/float ke int
+        final double parsedScore =
+            double.tryParse(data['total_skor']?.toString() ?? '0') ?? 0.0;
+        if (mounted) {
+          setState(() {
+            _totalPoin = parsedScore.round();
+          });
+        }
+      } else {
+        debugPrint('Gagal mengambil skor. Status: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('Error fetch skor profil: $e');
+    }
+  }
+
+  Future<void> _logout(BuildContext context) async {
+    final prefs = await SharedPreferences.getInstance();
+    // Hapus SEMUA data sesi lokal secara menyeluruh
+    await prefs.clear();
 
     if (context.mounted) {
-      // Kembali ke MainScreen (bukan LoginScreen) agar masuk mode Tamu
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (context) => const MainScreen()),
@@ -70,7 +98,6 @@ class _AkunScreenState extends State<AkunScreen> {
     }
   }
 
-  // Fungsi peringatan jika tamu mencoba klik menu khusus member
   void _promptLogin() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -88,256 +115,391 @@ class _AkunScreenState extends State<AkunScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA), // Latar abu-abu terang
+      backgroundColor: const Color(0xFFFAFAFA),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: Colors.black87,
+        title: const Text(
+          'Profil Saya',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () {},
+          ),
+        ],
+      ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.only(bottom: 120),
+        padding: const EdgeInsets.only(left: 24, right: 24, top: 20, bottom: 100),
+        physics: const BouncingScrollPhysics(),
         child: Column(
           children: [
-            // --- HEADER PROFIL ---
-            _buildProfileHeader(),
-
-            const SizedBox(height: 25),
-
-            // --- DAFTAR MENU ---
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+            // 1. Header & Foto Profil
+            Center(
               child: Column(
                 children: [
-                  _buildMenuTile(
-                    Icons.person_outline_rounded,
-                    'Edit Profil',
-                    isLoggedIn
-                        ? () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const EditProfilScreen(),
-                            ),
-                          )
-                        : _promptLogin,
-                  ),
-                  _buildMenuTile(
-                    Icons.notifications_none_rounded,
-                    'Notifikasi',
-                    isLoggedIn
-                        ? () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const NotifikasiScreen(),
-                            ),
-                          )
-                        : _promptLogin,
-                  ),
-                  _buildMenuTile(
-                    Icons.security_rounded,
-                    'Keamanan & Sandi',
-                    isLoggedIn
-                        ? () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const KeamananSandiScreen(),
-                            ),
-                          )
-                        : _promptLogin,
-                  ),
-
-                  // --- TAMBAHKAN KODE INI UNTUK MENU ADMIN ---
-                  if (roleUser.toLowerCase() == 'admin') ...[
-                    const SizedBox(height: 10),
-                    Container(
-                      decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.orange.withOpacity(0.5))),
-                      child: _buildMenuTile(
-                        Icons.admin_panel_settings_rounded,
-                        'Kelola Materi (Panel Admin)',
-                        () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminMateriScreen())),
+                  Stack(
+                    children: [
+                      const CircleAvatar(
+                        radius: 50,
+                        backgroundColor: warnaTosca,
+                        child: Icon(
+                          Icons.person,
+                          color: Colors.white,
+                          size: 55,
+                        ),
                       ),
-                    ),
-                  ],
-                  // -------------------------------------------
-
-                  const SizedBox(height: 10),
-                  const Divider(color: Colors.black12, thickness: 1),
-                  const SizedBox(height: 10),
-
-                  _buildMenuTile(
-                    Icons.help_outline_rounded,
-                    'Bantuan & FAQ',
-                    () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const BantuanFaqScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                  _buildMenuTile(
-                    Icons.info_outline_rounded,
-                    'Tentang Aplikasi',
-                    () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const TentangAplikasiScreen(),
-                        ),
-                      );
-                    },
-                  ),
-
-                  // --- TOMBOL LOGOUT / LOGIN ---
-                  SizedBox(
-                    width: double.infinity,
-                    height: 55,
-                    child: ElevatedButton(
-                      onPressed: isLoggedIn
-                          ? () => _logout(context)
-                          : () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => const LoginScreen(),
-                                ),
-                              );
-                            },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: isLoggedIn
-                            ? Colors.red[50]
-                            : warnaTosca.withOpacity(0.1),
-                        foregroundColor: isLoggedIn ? Colors.red : warnaTosca,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
-                          side: BorderSide(
-                            color: isLoggedIn
-                                ? Colors.red.shade200
-                                : warnaTosca.withOpacity(0.5),
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: warnaTosca,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                          ),
+                          child: const Icon(
+                            Icons.camera_alt_rounded,
+                            color: Colors.white,
+                            size: 16,
                           ),
                         ),
                       ),
-                      child: Text(
-                        isLoggedIn ? 'KELUAR AKUN' : 'MASUK / DAFTAR',
-                        style: const TextStyle(
-                          fontSize: 16,
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    isLoggedIn ? namaUser : 'Tamu',
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    roleUser.toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey[600],
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  if (isLoggedIn)
+                    ElevatedButton.icon(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const EditProfilScreen(),
+                        ),
+                      ),
+                      icon: const Icon(
+                        Icons.edit_rounded,
+                        size: 16,
+                        color: Colors.white,
+                      ),
+                      label: const Text(
+                        'Edit Profil',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: warnaTosca,
+                        elevation: 0,
+                        shape: const StadiumBorder(),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 10,
+                        ),
+                      ),
+                    )
+                  else
+                    ElevatedButton(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const LoginScreen()),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: warnaTosca,
+                        elevation: 0,
+                        shape: const StadiumBorder(),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 12,
+                        ),
+                      ),
+                      child: const Text(
+                        'Login Sekarang',
+                        style: TextStyle(
+                          color: Colors.white,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ),
+            const SizedBox(height: 32),
+
+            // 2. Highlight Card (Skor Kuis)
+            if (isLoggedIn)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 20,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  gradient: const LinearGradient(
+                    colors: [warnaTosca, Color(0xFF009CA6)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: warnaTosca.withOpacity(0.3),
+                      blurRadius: 15,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.emoji_events_rounded,
+                        color: Colors.amber,
+                        size: 40,
+                      ),
+                    ),
+                    const SizedBox(width: 20),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Skor Kuis Saya',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.9),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '$_totalPoin',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              const Padding(
+                                padding: EdgeInsets.only(bottom: 4),
+                                child: Text(
+                                  'Poin',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 32),
+
+            // 3. Menu List
+            _buildMenuCard([
+              _buildMenuItem(
+                Icons.notifications_none_rounded,
+                'Notifikasi',
+                isLoggedIn
+                    ? () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const NotifikasiScreen(),
+                        ),
+                      )
+                    : _promptLogin,
+              ),
+              _buildMenuDivider(),
+              _buildMenuItem(
+                Icons.security_rounded,
+                'Keamanan & Sandi',
+                isLoggedIn
+                    ? () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const KeamananSandiScreen(),
+                        ),
+                      )
+                    : _promptLogin,
+              ),
+              if (roleUser.toLowerCase() == 'admin') ...[
+                _buildMenuDivider(),
+                _buildMenuItem(
+                  Icons.admin_panel_settings_rounded,
+                  'Kelola Materi',
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const AdminMateriScreen(),
+                    ),
+                  ),
+                ),
+              ],
+            ]),
+            const SizedBox(height: 20),
+            _buildMenuCard([
+              _buildMenuItem(
+                Icons.help_outline_rounded,
+                'Bantuan & FAQ',
+                () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const BantuanFaqScreen()),
+                ),
+              ),
+              _buildMenuDivider(),
+              _buildMenuItem(
+                Icons.info_outline_rounded,
+                'Tentang Aplikasi',
+                () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const TentangAplikasiScreen(),
+                  ),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 32),
+
+            // 4. Tombol Logout
+            if (isLoggedIn)
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 15,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 4,
+                  ),
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.logout_rounded,
+                      color: Colors.red,
+                      size: 22,
+                    ),
+                  ),
+                  title: const Text(
+                    'Keluar Akun',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red,
+                      fontSize: 15,
+                    ),
+                  ),
+                  onTap: () => _logout(context),
+                ),
+              ),
+
+            const SizedBox(height: 40),
           ],
         ),
       ),
     );
   }
 
-  // Desain Header Atas
-  Widget _buildProfileHeader() {
+  Widget _buildMenuCard(List<Widget> children) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.only(top: 80, bottom: 40),
-      decoration: const BoxDecoration(
-        color: warnaTosca,
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(40),
-          bottomRight: Radius.circular(40),
-        ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Color(0x400CE2CD),
-            blurRadius: 20,
-            offset: Offset(0, 10),
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
           ),
         ],
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white.withOpacity(0.3),
-            ),
-            child: const CircleAvatar(
-              radius: 50,
-              backgroundColor: Colors.white,
-              child: Icon(Icons.person, size: 60, color: warnaTosca),
-            ),
-          ),
-          const SizedBox(height: 15),
-          Text(
-            namaUser,
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-              letterSpacing: 0.5,
-            ),
-          ),
-          const SizedBox(height: 5),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              roleUser.toUpperCase(),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.5,
-              ),
-            ),
-          ),
-        ],
-      ),
+      child: Column(children: children),
     );
   }
 
-  // Desain Kartu Menu
-  Widget _buildMenuTile(IconData icon, String title, VoidCallback onTap) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+  Widget _buildMenuItem(IconData icon, String title, VoidCallback onTap) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: warnaTosca.withOpacity(0.1),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: warnaTosca, size: 22),
       ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        leading: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: warnaTosca.withOpacity(0.1),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, color: warnaTosca),
+      title: Text(
+        title,
+        style: const TextStyle(
+          fontWeight: FontWeight.w600,
+          color: Colors.black87,
+          fontSize: 15,
         ),
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 15,
-            color: Colors.black87,
-          ),
-        ),
-        trailing: const Icon(
-          Icons.arrow_forward_ios_rounded,
-          size: 16,
-          color: Colors.grey,
-        ),
-        onTap: onTap,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       ),
+      trailing: const Icon(
+        Icons.chevron_right_rounded,
+        color: Colors.grey,
+        size: 22,
+      ),
+      onTap: onTap,
+    );
+  }
+
+  Widget _buildMenuDivider() {
+    return const Divider(
+      height: 1,
+      thickness: 1,
+      color: Color(0xFFF0F0F0),
+      indent: 20,
+      endIndent: 20,
     );
   }
 }

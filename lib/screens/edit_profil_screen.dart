@@ -1,7 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:frontend_pembelajaran_flutter/constants/colors.dart';
 import 'package:frontend_pembelajaran_flutter/constants/api.dart';
 
@@ -16,6 +19,8 @@ class _EditProfilScreenState extends State<EditProfilScreen> {
   final TextEditingController _namaController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   bool _isLoading = false;
+  File? _imageFile;
+  String? _currentProfileUrl;
 
   @override
   void initState() {
@@ -28,7 +33,45 @@ class _EditProfilScreenState extends State<EditProfilScreen> {
     setState(() {
       _namaController.text = prefs.getString('user_name') ?? '';
       _emailController.text = prefs.getString('user_email') ?? '';
+      _currentProfileUrl = prefs.getString('user_foto');
     });
+  }
+
+  Future<void> _pickImage() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? pickedFile = await picker.pickImage(
+      source: ImageSource.gallery,
+    );
+
+    if (pickedFile != null) {
+      _cropImage(pickedFile.path);
+    }
+  }
+
+  Future<void> _cropImage(String imagePath) async {
+    final croppedFile = await ImageCropper().cropImage(
+      sourcePath: imagePath,
+      aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+      uiSettings: [
+        AndroidUiSettings(
+          toolbarTitle: 'Potong Foto Profil',
+          toolbarColor: warnaTosca,
+          toolbarWidgetColor: Colors.white,
+          initAspectRatio: CropAspectRatioPreset.square,
+          lockAspectRatio: true,
+        ),
+        IOSUiSettings(
+          title: 'Potong Foto Profil',
+          aspectRatioLockEnabled: true,
+        ),
+      ],
+    );
+
+    if (croppedFile != null) {
+      setState(() {
+        _imageFile = File(croppedFile.path);
+      });
+    }
   }
 
   Future<void> _simpanProfil() async {
@@ -52,22 +95,29 @@ class _EditProfilScreenState extends State<EditProfilScreen> {
         throw Exception('User ID tidak ditemukan. Silakan login ulang.');
       }
 
-      // Tembak API PUT untuk mengupdate profil
-      final response = await http.put(
-        Uri.parse('$endpointUserProfil/$userId'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'nama': _namaController.text,
-          'email': _emailController.text,
-        }),
-      );
+      final uri = Uri.parse('$endpointUserProfil/$userId');
+      var request = http.MultipartRequest('PUT', uri);
 
+      request.fields['nama'] = _namaController.text;
+      request.fields['email'] = _emailController.text;
+
+      if (_imageFile != null) {
+        request.files.add(
+          await http.MultipartFile.fromPath('foto_profil', _imageFile!.path),
+        );
+      }
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
       final data = json.decode(response.body);
 
       if (response.statusCode == 200) {
-        // Simpan data terbaru ke memori HP (SharedPreferences)
         await prefs.setString('user_name', _namaController.text);
         await prefs.setString('user_email', _emailController.text);
+
+        if (data['data'] != null && data['data']['foto_profil'] != null) {
+          await prefs.setString('user_foto', data['data']['foto_profil']);
+        }
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -76,17 +126,18 @@ class _EditProfilScreenState extends State<EditProfilScreen> {
               backgroundColor: Colors.green,
             ),
           );
-          Navigator.pop(context); // Kembali dan update halaman akun
+          Navigator.pop(context);
         }
       } else {
         String errorMessage = data['message'] ?? 'Gagal memperbarui profil.';
-        if (mounted)
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(errorMessage),
               backgroundColor: Colors.orange,
             ),
           );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -120,12 +171,52 @@ class _EditProfilScreenState extends State<EditProfilScreen> {
         padding: const EdgeInsets.all(25),
         child: Column(
           children: [
-            const CircleAvatar(
-              radius: 50,
-              backgroundColor: Color(0xFFE0F2F1),
-              child: Icon(Icons.person, size: 60, color: warnaTosca),
+            GestureDetector(
+              onTap: _pickImage,
+              child: Stack(
+                children: [
+                  CircleAvatar(
+                    radius: 50,
+                    backgroundColor: const Color(0xFFE0F2F1),
+                    backgroundImage: _imageFile != null
+                        ? FileImage(_imageFile!) as ImageProvider
+                        : (_currentProfileUrl != null &&
+                                  _currentProfileUrl!.isNotEmpty
+                              ? NetworkImage(_currentProfileUrl!)
+                              : null),
+                    child:
+                        (_imageFile == null &&
+                            (_currentProfileUrl == null ||
+                                _currentProfileUrl!.isEmpty))
+                        ? const Icon(Icons.person, size: 60, color: warnaTosca)
+                        : null,
+                  ),
+                  Positioned(
+                    bottom: 0,
+                    right: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: warnaTosca,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                      child: const Icon(
+                        Icons.camera_alt,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 40),
+            const SizedBox(height: 10),
+            const Text(
+              'Ketuk untuk mengganti foto',
+              style: TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+            const SizedBox(height: 30),
             _buildTextField(
               'Nama Lengkap',
               Icons.person_outline,
