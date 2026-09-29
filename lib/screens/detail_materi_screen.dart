@@ -109,11 +109,12 @@ class _DetailMateriScreenState extends State<DetailMateriScreen> {
           'Content-Type': 'application/json',
         },
         body: jsonEncode({
-          'user_id': currentUserId,
-          'materi_id': widget.materi['id'],
-          'rating': rating,
+          'user_id': int.parse(currentUserId.toString()),
+          'materi_id': int.parse(widget.materi['id'].toString()),
+          'rating': rating.toInt(),
         }),
       );
+      
       if (response.statusCode == 200 || response.statusCode == 201) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -124,9 +125,26 @@ class _DetailMateriScreenState extends State<DetailMateriScreen> {
           );
           _fetchRating();
         }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Gagal mengirim rating (Kode: )'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     } catch (e) {
       debugPrint('Error submit rating: ');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Terjadi kesalahan koneksi: '),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isSubmittingRating = false);
     }

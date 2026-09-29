@@ -1,10 +1,9 @@
-// import 'dart:convert';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:file_selector/file_selector.dart';
-import 'package:http_parser/http_parser.dart';
 import 'package:frontend_pembelajaran_flutter/constants/colors.dart';
 import 'package:frontend_pembelajaran_flutter/constants/api.dart';
 
@@ -80,6 +79,54 @@ class _FormMateriScreenState extends State<FormMateriScreen> {
     }
   }
 
+  Future<String> _uploadToS3(XFile file, String type) async {
+    String extension = file.name.contains('.') ? file.name.split('.').last.toLowerCase() : (type == 'cover' ? 'jpg' : type);
+    String mimeType = 'application/octet-stream';
+    if (type == 'cover') {
+       mimeType = extension == 'png' ? 'image/png' : 'image/jpeg';
+    } else if (type == 'pdf') {
+       mimeType = 'application/pdf';
+    } else if (type == 'video') {
+       mimeType = 'video/mp4';
+    }
+
+    var genUrlResponse = await http.post(
+      Uri.parse('https://api-service.toscaflow.id/api/materi/generate-url'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': staticAuthToken,
+      },
+      body: jsonEncode({
+        "type": type,
+        "extension": extension,
+        "content_type": mimeType
+      }),
+    );
+
+    if (genUrlResponse.statusCode != 200) {
+      throw Exception('Gagal meminta URL upload untuk $type');
+    }
+
+    var genUrlData = jsonDecode(genUrlResponse.body);
+    String uploadUrl = genUrlData['data']['upload_url'];
+    String fileKey = genUrlData['data']['file_key'];
+
+    List<int> bytes = await file.readAsBytes();
+    var s3Response = await http.put(
+      Uri.parse(uploadUrl),
+      headers: {
+        'Content-Type': mimeType,
+      },
+      body: bytes,
+    );
+
+    if (s3Response.statusCode != 200) {
+      throw Exception('Gagal upload $type ke S3');
+    }
+
+    return fileKey;
+  }
+
   Future<void> _simpanData() async {
     if (_judulController.text.isEmpty || _sinopsisController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -101,70 +148,50 @@ class _FormMateriScreenState extends State<FormMateriScreen> {
       return;
     }
 
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
     setState(() => _isLoading = true);
 
     try {
+      String? fileSampulKey;
+      String? fileMateriKey;
+
+      if (_sampulImage != null) {
+        fileSampulKey = await _uploadToS3(_sampulImage!, 'cover');
+      }
+
+      if (_tipeAktif != 'cerita' && _fileMateri != null) {
+        fileMateriKey = await _uploadToS3(_fileMateri!, _tipeAktif);
+      }
+
       var url = _isEdit
           ? Uri.parse('$endpointMateri/update/${widget.materi['id']}')
           : Uri.parse(endpointMateri);
 
-      var request = http.MultipartRequest('POST', url);
-      request.fields['judul'] = _judulController.text;
-      request.fields['sinopsis'] = _sinopsisController.text;
-
+      Map<String, dynamic> payload = {
+        'judul': _judulController.text,
+        'sinopsis': _sinopsisController.text,
+      };
+      
       if (!_isEdit) {
-        request.fields['tipe'] = _tipeAktif;
+        payload['tipe'] = _tipeAktif;
       }
 
-      // Lampirkan Sampul Baru (Streaming Path untuk HP, Bytes untuk Web)
-      if (_sampulImage != null) {
-        String ext = _sampulImage!.name.contains('.')
-            ? _sampulImage!.name.split('.').last.toLowerCase()
-            : 'jpg';
-        if (kIsWeb && _sampulBytes != null) {
-          request.files.add(
-            http.MultipartFile.fromBytes(
-              'file_sampul',
-              _sampulBytes!,
-              filename: 'sampul.$ext',
-              contentType: MediaType('image', ext == 'png' ? 'png' : 'jpeg'),
-            ),
-          );
-        } else if (!kIsWeb) {
-          request.files.add(
-            await http.MultipartFile.fromPath(
-              'file_sampul',
-              _sampulImage!.path,
-            ),
-          );
-        }
-      }
+      if (fileSampulKey != null) payload['file_sampul'] = fileSampulKey;
+      if (fileMateriKey != null) payload['file_materi'] = fileMateriKey;
 
-      // Lampirkan File Materi Baru (Streaming Path untuk HP, Bytes untuk Web)
-      if (_tipeAktif != 'cerita' && _fileMateri != null) {
-        if (kIsWeb && _fileMateriBytes != null) {
-          request.files.add(
-            http.MultipartFile.fromBytes(
-              'file_materi',
-              _fileMateriBytes!,
-              filename: _fileMateri!.name,
-            ),
-          );
-        } else if (!kIsWeb) {
-          request.files.add(
-            await http.MultipartFile.fromPath('file_materi', _fileMateri!.path),
-          );
-        }
-      }
+      var response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': staticAuthToken,
+        },
+        body: jsonEncode(payload),
+      ).timeout(const Duration(minutes: 5));
 
-      // 🚀 TIMEOUT 15 MENIT MENCEGAH PUTUS KONEKSI SAAT UPLOAD RATUSAN MB
-      var streamedResponse = await request.send().timeout(
-        const Duration(minutes: 15),
-      );
-      if (streamedResponse.statusCode == 200 ||
-          streamedResponse.statusCode == 201) {
-        if (mounted) Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        if (mounted) navigator.pop();
+        messenger.showSnackBar(
           SnackBar(
             content: Text(
               _isEdit
@@ -176,14 +203,13 @@ class _FormMateriScreenState extends State<FormMateriScreen> {
         );
       } else {
         throw Exception(
-          'Gagal menyimpan ke server. Cek kembali koneksi & limit PHP.',
+          'Gagal menyimpan ke server. Kode: ${response.statusCode}',
         );
       }
     } catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-        );
+      messenger.showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

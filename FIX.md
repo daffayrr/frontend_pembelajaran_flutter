@@ -1,37 +1,52 @@
 # MISSION
-Kamu adalah Expert Flutter Developer & Senior UI/UX Designer. Saya memiliki serangkaian perbaikan UI besar-besaran untuk menyempurnakan aplikasi "Gumregah Dongeng". 
+Kamu adalah Expert Flutter Developer. Tim Backend telah merombak total arsitektur aplikasi untuk mengamankan stabilitas server, memindahkan sistem *upload* menjadi **Direct-to-S3 via Pre-signed URL**, serta memperbaiki *silent failure* pada sistem Rating. 
 
-**⚠️ INSTRUKSI KRUSIAL:**
-**JANGAN TULIS KODE ATAU EKSEKUSI PERBAIKAN INI DULU!** 
-Tugasmu saat ini HANYA membaca, memahami, menganalisis struktur yang diminta, dan membalas dengan "SIAP DIEKSEKUSI. SILAKAN BERIKAN PERINTAH MULAI" beserta ringkasan singkat rencanamu.
+Tugasmu adalah merombak keseluruhan kode *frontend* Flutter agar terintegrasi sempurna dengan arsitektur backend terbaru.
 
-# TASKS TO ANALYZE
+# REFERENCE DOCUMENTS
+Kamu WAJIB membaca dan mematuhi dokumentasi API terbaru yang telah disiapkan di dalam folder root project:
+1. `acuan/UPDATE.md` (Untuk arsitektur Direct-to-S3 Foto Profil & Materi)
+2. `acuan/UPDATE_RATING.md` (Untuk perbaikan sistem Rating)
 
-## 1. Perbaikan System UI Overlay (Status Bar Putih)
-- **Masalah:** Warna jam, baterai, dan sinyal di *status bar* HP saat ini berwarna putih, bertabrakan dengan *background* AppBar aplikasi yang juga putih.
-- **Solusi:** Terapkan `SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark)` secara global atau atur `systemOverlayStyle: SystemUiOverlayStyle.dark` pada setiap `AppBar` yang berwarna putih. Ikon status bar HARUS menjadi hitam/gelap.
+# PRE-EXECUTION COMMANDS
+Sebelum mengubah kode, lakukan pembersihan ruang kerja untuk menghindari masalah *cache*:
+1. Jalankan `flutter clean` di terminal.
+2. Jalankan `flutter pub get` untuk menginstal ulang semua dependensi.
+3. **PENTING:** JANGAN melakukan *build* APK atau *release* dulu setelah kode selesai. Fokus pada perbaikan kode sumber saja.
 
-## 2. Redesign Halaman Detail Cerita / Ebook
-- **Konsep:** Gaya sinopsis premium ala Netflix/Apple Books.
-- **Header:** `AppBar` transparan/putih dengan tombol Back. **Hapus** tombol Like/Share jika ada (tidak diperlukan).
-- **Hero Image (Thumbnail):** 
-  - Letakkan *cover* buku di tengah atas.
-  - Gunakan proporsi potret/buku, berikan `ClipRRect` (radius 12), dan berikan *drop shadow* tebal namun lembut agar buku terlihat menonjol (3D effect).
-- **Info Singkat:** Judul cerita (Besar, Bold), Nama Penulis/Kategori di bawahnya (Abu-abu).
-- **Stats Row:** Buat barisan informasi menggunakan kotak/container kecil berjejer mendatar (misal: Rating, Durasi, Kategori Umur) dengan warna latar Tosca sangat pudar.
-- **Action Buttons:** Sesuaikan dengan tombol yang sudah ada (misal: "Mulai Membaca" atau "Kerjakan Kuis"). Gunakan desain *stadium border* berwarna Tosca, teks putih, ikon di sebelah kiri.
-- **Sinopsis & Komentar:** 
-  - Teks sinopsis rapi dengan opsi "Baca Selengkapnya".
-  - Di bawahnya, letakkan komponen **Komentar** yang sudah ada sebelumnya.
+# EXECUTION INSTRUCTIONS: FLUTTER REFACTORING
 
-## 3. Sinkronisasi Tombol Filter di Halaman Favorit
-- **Masalah:** Desain tombol filter (Semua, Fabel, Legenda, dll) di halaman "Koleksi Favorit" berbeda dengan yang ada di halaman "Jelajahi Dongeng".
-- **Solusi:** Samakan 100% komponen `ChoiceChip` (baik *style* chip aktif yang berwarna Tosca maupun chip inaktif) di `bookmark_screen.dart` agar identik dengan yang ada di `daftar_cerita_screen.dart`.
+## 1. Refactor Fitur Upload Foto Profil (`lib/screens/profile_screen.dart` atau `edit_profile_screen.dart`)
+Ganti logika `MultipartRequest` lama dengan metode *Direct-to-S3* sesuai `UPDATE_2.md`:
+- **Generate URL:** Lakukan POST ke `/api/user/profil/generate-url/{id}` dengan JSON body berisi `extension` dan `content_type` gambar.
+- **Direct Upload S3:** Gunakan `http.put` langsung ke `upload_url` yang didapat. Kirim byte gambar (`readAsBytes()`) murni di body, bukan multipart. Wajib set header `'Content-Type'` persis seperti saat generate.
+- **Confirm:** Setelah PUT sukses (status 200), POST ke `/api/user/profil/confirm/{id}` dengan JSON body `file_key`. Update state UI `CircleAvatar` dengan URL final dari respons.
 
-## 4. Pembersihan Search Bar
-- **Masalah:** Ada ikon filter (suffix icon) di dalam kolom pencarian yang tidak diperlukan.
-- **Solusi:** Hapus ikon filter/slider tersebut dari *widget* Search Bar di Halaman Jelajah dan Halaman Favorit. Cukup ikon kaca pembesar (*search*) di sebelah kiri dan teks *placeholder*.
+## 2. Refactor Fitur Upload Materi (`lib/screens/tambah_materi_screen.dart`)
+Rombak halaman Tambah Materi untuk PDF dan Sampul sesuai `UPDATE_2.md`:
+- Hapus penggunaan `MultipartRequest` ke CodeIgniter.
+- Buat fungsi *helper* asinkron untuk mengunggah file satu per satu (PDF lalu Cover) menggunakan alur: POST Generate URL -> PUT S3 -> Return `file_key`.
+- Setelah semua file fisik berhasil masuk ke S3, kirim data teks final (Judul, Sinopsis, `file_materi`, `file_sampul`) ke POST `/api/materi` dengan tipe `application/json`.
+
+## 3. Refactor Sistem Rating (`lib/screens/detail_materi_screen.dart` atau terkait)
+Perbaiki integrasi fitur rating sesuai panduan `UPDATE_RATING.md`:
+- **Strict Casting:** Pastikan payload yang dikirim (`user_id`, `materi_id`, `rating`) di-parsing dengan ketat menggunakan `int.parse()` atau bertipe `int` sebelum di-`jsonEncode`. Jangan kirim *String*.
+- **Error Handling:** Backend sekarang akan melemparkan status 500/400 jika *database* menolak (tidak lagi memalsukan 200 OK). Tangkap status ini dan tampilkan `ScaffoldMessenger` (SnackBar) error berwarna merah jika gagal.
+- **State Refresh:** Jika HTTP response merespons 200 OK (berhasil), kamu WAJIB memanggil kembali fungsi `fetchMateriRating()` (atau yang setara) dan melakukan `setState()` agar bintang dan angka rata-rata di layar HP pengguna langsung berubah detik itu juga tanpa perlu memuat ulang halaman.
+
+# STRICT CONSTRAINTS
+- Setiap *request* ke API Backend CI4 (bukan ke S3) WAJIB menggunakan header:
+  `'Content-Type': 'application/json'`
+  `'Authorization': 'Bearer T0sc4Fl0w_S3cr3t_2026'`
+- Tampilkan `CircularProgressIndicator` yang memblokir layar selama proses *upload* agar pengguna tidak menekan tombol dua kali.
+
+# PERUBAHAN ICON
+1. Pastikan *package* `flutter_launcher_icons` sudah ada di `dev_dependencies` dalam file `pubspec.yaml`. Jika belum, tambahkan.
+2. Tambahkan atau perbarui blok konfigurasi berikut di bagian bawah `pubspec.yaml` (pastikan *path* mengarah ke file logo/ikon yang benar di folder assets):
+3. Buka terminal internal, lalu eksekusi *command* ini untuk men-generate semua aset ikon iOS dan Android secara otomatis:
+   `dart run flutter_launcher_icons`
+
+Tuliskan/update file-file Dart tersebut sekarang dan berikan konfirmasi log jika sudah selesai!
 
 # REMINDER
-Pahami baik-baik keempat poin di atas. Jawab HANYA dengan konfirmasi bahwa kamu mengerti dan siap mengeksekusi satu per satu saat saya beri aba-aba.
-Jangan dilakukan build dahulu sebelum diperintahkan!
+Jangan pernah lakukan build dan release dahulu!

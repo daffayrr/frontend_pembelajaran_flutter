@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
@@ -91,7 +92,7 @@ class _AkunScreenState extends State<AkunScreen> {
     );
     if (croppedFile == null) return;
 
-    // 3. Upload via Multipart ke S3
+    // 3. Upload via Direct-to-S3 Pre-signed URL
     setState(() => _isUploading = true);
 
     try {
@@ -99,21 +100,62 @@ class _AkunScreenState extends State<AkunScreen> {
       final userId = prefs.getString('user_id');
       if (userId == null) throw Exception('User ID tidak ditemukan.');
 
-      final uri = Uri.parse(
-        'https://api-service.toscaflow.id/api/user/profil/foto/$userId',
-      );
-      final request = http.MultipartRequest('POST', uri);
-      request.headers['Authorization'] = staticAuthToken;
-      request.files.add(
-        await http.MultipartFile.fromPath('foto', croppedFile.path),
+      File imageFile = File(croppedFile.path);
+      String extension = imageFile.path.split('.').last.toLowerCase();
+      String mimeType = (extension == 'png') ? 'image/png' : 'image/jpeg';
+
+      // Tahap 1: Generate URL
+      var genUrlResponse = await http.post(
+        Uri.parse('https://api-service.toscaflow.id/api/user/profil/generate-url/$userId'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': staticAuthToken,
+        },
+        body: jsonEncode({
+          'extension': extension,
+          'content_type': mimeType,
+        }),
       );
 
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
-      final data = json.decode(response.body);
+      if (genUrlResponse.statusCode != 200) {
+        throw Exception('Gagal meminta URL upload: ${genUrlResponse.statusCode}');
+      }
 
-      if (response.statusCode == 200) {
-        final newUrl = data['url'] as String?;
+      var genUrlData = jsonDecode(genUrlResponse.body);
+      String uploadUrl = genUrlData['data']['upload_url'];
+      String fileKey = genUrlData['data']['file_key'];
+
+      // Tahap 2: Direct Upload ke S3
+      List<int> imageBytes = await imageFile.readAsBytes();
+      var s3Response = await http.put(
+        Uri.parse(uploadUrl),
+        headers: {
+          'Content-Type': mimeType,
+        },
+        body: imageBytes,
+      );
+
+      if (s3Response.statusCode != 200) {
+        throw Exception('Gagal mengunggah file ke S3: ${s3Response.statusCode}');
+      }
+
+      // Tahap 3: Konfirmasi ke Backend
+      var confirmResponse = await http.post(
+        Uri.parse('https://api-service.toscaflow.id/api/user/profil/confirm/$userId'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': staticAuthToken,
+        },
+        body: jsonEncode({
+          'file_key': fileKey,
+        }),
+      );
+      
+      final confirmData = json.decode(confirmResponse.body);
+
+      if (confirmResponse.statusCode == 200) {
+        // Asumsi backend merespons dengan URL final di confirmData['data']['url'] atau confirmData['url']
+        final newUrl = confirmData['url'] ?? (confirmData['data'] != null ? confirmData['data']['url'] : null);
         if (newUrl != null && mounted) {
           await prefs.setString('user_foto', newUrl);
           setState(() => _fotoProfilUrl = newUrl);
@@ -125,7 +167,7 @@ class _AkunScreenState extends State<AkunScreen> {
           );
         }
       } else {
-        final msg = data['message'] ?? 'Gagal mengupload foto.';
+        final msg = confirmData['message'] ?? 'Gagal konfirmasi foto.';
         messenger.showSnackBar(
           SnackBar(content: Text(msg), backgroundColor: Colors.orange),
         );

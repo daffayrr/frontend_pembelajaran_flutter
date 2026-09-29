@@ -122,61 +122,138 @@ class _EditProfilScreenState extends State<EditProfilScreen> {
         throw Exception('User ID tidak ditemukan. Silakan login ulang.');
       }
 
+      // UPDATE NAMA & EMAIL DAHULU VIA JSON
       final uri = Uri.parse('$endpointUserProfil/$userId');
-      var request = http.MultipartRequest('PUT', uri);
-
-      request.fields['nama'] = _namaController.text;
-      request.fields['email'] = _emailController.text;
-
-      if (_imageFile != null) {
-        request.files.add(
-          await http.MultipartFile.fromPath('foto_profil', _imageFile!.path),
-        );
-      }
-
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
+      var response = await http.put(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': staticAuthToken,
+        },
+        body: jsonEncode({
+          'nama': _namaController.text,
+          'email': _emailController.text,
+        }),
+      );
       
-      dynamic data;
-      try {
-        data = json.decode(response.body);
-      } catch (e) {
-        throw Exception('Gagal membaca balasan server. Status: ');
+      var responseBody = response.body;
+
+      if (response.statusCode == 200 && _imageFile != null) {
+        // TAHAP 1: MINTA URL UPLOAD KE BACKEND
+        String extension = _imageFile!.path.split('.').last.toLowerCase();
+        String mimeType = extension == 'png' ? 'image/png' : 'image/jpeg';
+        
+        var genUrlResponse = await http.post(
+          Uri.parse('https://api-service.toscaflow.id/api/user/profil/generate-url/$userId'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': staticAuthToken,
+          },
+          body: jsonEncode({
+            "extension": extension,
+            "content_type": mimeType
+          }),
+        );
+        
+        if (genUrlResponse.statusCode == 200) {
+          var genUrlData = jsonDecode(genUrlResponse.body);
+          String uploadUrl = genUrlData['data']['upload_url'];
+          String fileKey = genUrlData['data']['file_key'];
+          
+          // TAHAP 2: DIRECT UPLOAD KE S3
+          List<int> imageBytes = await _imageFile!.readAsBytes();
+          var s3Response = await http.put(
+            Uri.parse(uploadUrl),
+            headers: {
+              'Content-Type': mimeType,
+            },
+            body: imageBytes,
+          );
+          
+          if (s3Response.statusCode == 200) {
+            // TAHAP 3: KONFIRMASI KE BACKEND
+            var confirmResponse = await http.post(
+              Uri.parse('https://api-service.toscaflow.id/api/user/profil/confirm/$userId'),
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': staticAuthToken,
+              },
+              body: jsonEncode({
+                "file_key": fileKey
+              }),
+            );
+            
+            // Kita gabungkan respons dari update profil dengan confirm foto
+            if (confirmResponse.statusCode == 200) {
+               responseBody = confirmResponse.body;
+            } else {
+               responseBody = confirmResponse.body;
+               response = confirmResponse;
+            }
+          } else {
+             throw Exception('Gagal upload S3');
+          }
+        } else {
+            throw Exception('Gagal generate URL S3');
+        }
       }
 
-      if (response.statusCode == 200) {
-        await prefs.setString('user_name', _namaController.text);
-        await prefs.setString('user_email', _emailController.text);
+      // CETAK KE TERMINAL UNTUK DEBUGGING
+      print('=== DEBUG UPLOAD FOTO ===');
+      print('Status Code: ${response.statusCode}');
+      print('Raw Response: $responseBody');
+      print('=========================');
 
-        if (data['data'] != null && data['data']['foto_profil'] != null) {
-          await prefs.setString('user_foto', data['data']['foto_profil']);
+      // Validasi keamanan: Pastikan respons diawali kurung kurawal/siku (tanda JSON)
+      if (responseBody.trim().startsWith('{') || responseBody.trim().startsWith('[')) {
+        var data = json.decode(responseBody);
+
+        if (response.statusCode == 200) {
+          await prefs.setString('user_name', _namaController.text);
+          await prefs.setString('user_email', _emailController.text);
+
+          if (data['data'] != null && data['data']['foto_profil'] != null) {
+            await prefs.setString('user_foto', data['data']['foto_profil']);
+          }
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Profil berhasil diperbarui!'),
+                backgroundColor: Colors.green,
+              ),
+            );
+            Navigator.pop(context);
+          }
+        } else {
+          String errorMessage = data['message'] ?? 'Gagal memperbarui profil.';
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(errorMessage),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
         }
-
+      } else {
+        // ERROR SERVER MENTAH (HTML/Teks) - BUKAN JSON
+        print('Peringatan: Server mengembalikan HTML/Teks mentah. Kemungkinan file terlalu besar atau server crash.');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Profil berhasil diperbarui!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-          Navigator.pop(context);
-        }
-      } else {
-        String errorMessage = data['message'] ?? 'Gagal memperbarui profil.';
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(errorMessage),
-              backgroundColor: Colors.orange,
+              content: Text('Terjadi kesalahan pada server (Bukan JSON). Coba foto dengan ukuran lebih kecil.'),
+              backgroundColor: Colors.red,
             ),
           );
         }
       }
     } catch (e) {
+      print('Error Exception saat upload: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Terjadi kesalahan jaringan.'),
+          SnackBar(
+            content: Text('Koneksi terputus: $e'),
             backgroundColor: Colors.red,
           ),
         );
